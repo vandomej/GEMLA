@@ -1,12 +1,15 @@
 mod tree;
-
-use uuid::Uuid;
+mod state;
 
 fn build_tree(h: u32) -> Option<Box<tree::Tree>> {
     let mut result: Option<Box<tree::Tree>> = None;
 
     if h != 0 {
-        result = Some(tree::concat_trees(Uuid::new_v4(), build_tree(h - 1), build_tree(h - 1)));
+        result = Some(tree::concat_trees(state::create(), build_tree(h - 1), build_tree(h - 1)));
+        match &result {
+            Some(r) => (*r).run_simulation(),
+            _ => ()
+        }
     }
 
     result
@@ -19,8 +22,8 @@ pub fn run_bracket() {
     loop {
         println!("=========================================");
         println!("Running bracket...");
-        println!("{}", tree);
         height += 1;
-        tree = *tree::concat_trees(Uuid::new_v4(), Some(Box::new(tree)), build_tree(height));
+        tree = *tree::concat_trees(state::create(), Some(Box::new(tree)), build_tree(height));
+        tree.run_simulation();
     }
 }
