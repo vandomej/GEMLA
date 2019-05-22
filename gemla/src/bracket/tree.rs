@@ -1,14 +1,15 @@
 use std::fmt;
+use uuid::Uuid;
 
 pub struct Tree {
-    val: u32,
+    id: Uuid,
     left: Option<Box<Tree>>,
     right: Option<Box<Tree>>
 }
 
-pub fn concat_trees(v: u32, l: Option<Box<Tree>>, r: Option<Box<Tree>>) -> Box<Tree> {
+pub fn concat_trees(v: Uuid, l: Option<Box<Tree>>, r: Option<Box<Tree>>) -> Box<Tree> {
     Box::new(Tree {
-        val: v,
+        id: v,
         left: l,
         right: r
     })
@@ -23,6 +24,6 @@ impl fmt::Display for Tree {
             }
         };
 
-        write!(f, "({} :{}|{})", self.val, node_str(&self.left), node_str(&self.right))
+        write!(f, "({} :{}|{})", self.id, node_str(&self.left), node_str(&self.right))
     }
 }
