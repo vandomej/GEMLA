@@ -1,15 +1,15 @@
 use std::fmt;
-use super::state;
+use uuid::Uuid;
 
 pub struct Tree {
-    state: state::State,
+    id: Uuid,
     left: Option<Box<Tree>>,
     right: Option<Box<Tree>>
 }
 
-pub fn concat_trees(s: state::State, l: Option<Box<Tree>>, r: Option<Box<Tree>>) -> Box<Tree> {
+pub fn concat_trees(id: Uuid, l: Option<Box<Tree>>, r: Option<Box<Tree>>) -> Box<Tree> {
     Box::new(Tree {
-        state: s,
+        id: id,
         left: l,
         right: r
     })
@@ -24,13 +24,13 @@ impl fmt::Display for Tree {
             }
         };
 
-        write!(f, "({} :{}|{})", self.state, node_str(&self.left), node_str(&self.right))
+        write!(f, "({} :{}|{})", self.id, node_str(&self.left), node_str(&self.right))
     }
 }
 
 fn fmt_node(t: &Option<Box<Tree>>) -> String {
     match t {
-        Some(n) => format!("{}", (*n).state),
+        Some(n) => format!("{}", (*n).id),
         _ => String::from("_")
     }
 }
@@ -38,7 +38,7 @@ fn fmt_node(t: &Option<Box<Tree>>) -> String {
 impl Tree {
     pub fn run_simulation(&self) {
         println!("================================");
-        println!("Running simulation for node: {}", self.state);
+        println!("Running simulation for node: {}", self.id);
         println!("With children {} and {}", fmt_node(&self.left), fmt_node(&self.right));
     }
 }

@@ -11,8 +11,8 @@ impl fmt::Display for State {
     }
 }
 
-pub fn create() -> State {
+pub fn create(id: &Uuid) -> State {
     State {
-        id: Uuid::new_v4()
+        id: id.clone()
     }
 }
