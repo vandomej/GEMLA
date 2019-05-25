@@ -1,0 +1,9 @@
+name: GEMLA
+version: "0.1"
+autor: Jacob VanDomelen <jacob.vandome15@gmail.com>
+about: Uses a genetic algorithm to generate a machine learning algorithm.
+args:
+    - DIRECTORY:
+        help: Sets the input/output directory for the program.
+        required: true
+        index: 1
