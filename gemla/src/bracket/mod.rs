@@ -1,5 +1,6 @@
-mod tree;
 mod state;
+
+use super::tree;
 
 use uuid::Uuid;
 
@@ -9,8 +10,8 @@ use uuid::Uuid;
 // }
 
 /// Constructs a tree with a given height while simultaneously running a simulation on each node.
-fn build_tree(h: u32) -> Option<Box<tree::Tree>> {
-	let mut result: Option<Box<tree::Tree>> = None;
+fn build_tree(h: u32) -> Option<Box<tree::Tree<Uuid>>> {
+	let mut result: Option<Box<tree::Tree<Uuid>>> = None;
 
 	// Recursively building a tree and running the simulation after wards to ensure a bottom-up
 	// execution order.
@@ -30,7 +31,7 @@ fn build_tree(h: u32) -> Option<Box<tree::Tree>> {
 /// TODO: Explain reasoning for bracket system against genetic algorithm.
 pub fn run_bracket() {
 	let mut height = 1;
-	let mut tree: tree::Tree = *build_tree(height).expect("Error getting result from build_tree.");
+	let mut tree: tree::Tree<Uuid> = *build_tree(height).expect("Error getting result from build_tree.");
 
 	// Building tree one node at a time, appending to the top.
 	loop {

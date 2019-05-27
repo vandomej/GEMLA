@@ -1,4 +1,5 @@
 mod bracket;
+mod tree;
 mod constants;
 
 #[macro_use]
