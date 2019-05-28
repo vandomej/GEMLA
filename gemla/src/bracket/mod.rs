@@ -2,7 +2,24 @@ mod state;
 
 use super::tree;
 
+use std::str::FromStr;
 use uuid::Uuid;
+
+impl tree::Tree<Uuid> {
+	pub fn run_simulation(&self) {
+		println!("================================");
+		println!("Running simulation for node: {}", self.val);
+		println!("With children {} and {}", tree::fmt_node(&self.left), tree::fmt_node(&self.right));
+	}
+}
+
+impl FromStr for tree::Tree<Uuid> {
+	type Err = tree::ParseTreeError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+
+	}
+}
 
 // pub struct Bracket {
 //     tree: tree::Tree,
