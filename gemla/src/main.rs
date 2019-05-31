@@ -5,6 +5,7 @@ extern crate regex;
 mod bracket;
 mod tree;
 mod constants;
+mod file_linked;
 
 use clap::App;
 use std::fs::metadata;
@@ -12,6 +13,7 @@ use std::fs::metadata;
 /// Runs a simluation of a genetic algorithm against a dataset.
 /// 
 /// Use the -h, --h, or --help flag to see usage syntax.
+/// TODO
 fn main() {
 	// Command line arguments are parsed with the clap crate. And this program uses
 	// the yaml method with clap.

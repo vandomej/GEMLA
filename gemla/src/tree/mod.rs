@@ -1,5 +1,4 @@
 use std::fmt;
-
 use std::str::FromStr;
 use regex::Regex;
 
@@ -69,17 +68,13 @@ fn from_str_helper<T: FromStr>(s: &str) -> Result<Option<Box<Tree<T>>>, ParseTre
 	let caps = re.captures(s);
 
 	if let Some(c) = caps {
-		result = T::from_str(c.get(1).unwrap().as_str())
-		.or(Err(ParseTreeError::new(format!("Unable to parse node value: {}", c.get(1).unwrap().as_str()))))
-		.and_then(|v| {
-			seperate_nodes(c.get(2).unwrap().as_str()).and_then(|(left, right)| {
-				from_str_helper(left).and_then(|l| {
-					from_str_helper(right).and_then(|r| {
-						Ok(Some(Box::new(Tree::new(v, l, r))))
-					})
-				})
-			})
-		})
+		let val = T::from_str(c.get(1).unwrap().as_str())
+		.or(Err(ParseTreeError::new(format!("Unable to parse node value: {}", c.get(1).unwrap().as_str()))))?;
+		let (left, right) = seperate_nodes(c.get(2).unwrap().as_str())?;
+		let left = from_str_helper(left)?;
+		let right = from_str_helper(right)?;
+
+		result = Ok(Some(Box::new(Tree::new(val, left, right))));
 	} else if emptyre.is_match(s) {
 		result = Ok(None);
 	}
@@ -96,22 +91,34 @@ impl<T> FromStr for Tree<T> where T: FromStr {
 		let caps = re.captures(s);
 
 		if let Some(c) = caps {
-			result = T::from_str(c.get(1).unwrap().as_str())
-			.or(Err(ParseTreeError::new(format!("Unable to parse node value: {}", c.get(1).unwrap().as_str()))))
-			.and_then(|v| {
-				seperate_nodes(c.get(2).unwrap().as_str()).and_then(|(left, right)| {
-					from_str_helper(left).and_then(|l| {
-						from_str_helper(right).and_then(|r| {
-							Ok(Tree::new(v, l, r))
-						})
-					})
-				})
-			})
+			let val = T::from_str(c.get(1).unwrap().as_str())
+			.or(Err(ParseTreeError::new(format!("Unable to parse node value: {}", c.get(1).unwrap().as_str()))))?;
+			let (left, right) = seperate_nodes(c.get(2).unwrap().as_str())?;
+			let left = from_str_helper(left)?;
+			let right = from_str_helper(right)?;
+			
+			result = Ok(Tree::new(val, left, right));
 		}
 
 		// if let Some(c) = caps {
-		// 	let val = T::from_str(c.get(1).unwrap().as_str());
+		// 	result = T::from_str(c.get(1).unwrap().as_str())
+		// 	.or(Err(ParseTreeError::new(format!("Unable to parse node value: {}", c.get(1).unwrap().as_str()))))
+		// 	.and_then(|v| {
+		// 		seperate_nodes(c.get(2).unwrap().as_str())
+		// 		.and_then(|(left, right)| {
+		// 			from_str_helper(left)
+		// 			.and_then(|l| {
+		// 				from_str_helper(right)
+		// 				.and_then(|r| {
+		// 					Ok(Tree::new(v, l, r))
+		// 				})
+		// 			})
+		// 		})
+		// 	})
+		// }
 
+		// if let Some(c) = caps {
+		// 	let val = T::from_str(c.get(1).unwrap().as_str());
 		// 	if let Ok(v) = val {
 		// 		match seperate_nodes(c.get(2).unwrap().as_str()) {
 		// 			Ok((l, r)) => {
