@@ -2,7 +2,6 @@ mod state;
 
 use super::tree;
 
-use std::str::FromStr;
 use uuid::Uuid;
 
 impl tree::Tree<Uuid> {
@@ -10,14 +9,6 @@ impl tree::Tree<Uuid> {
 		println!("================================");
 		println!("Running simulation for node: {}", self.val);
 		println!("With children {} and {}", tree::fmt_node(&self.left), tree::fmt_node(&self.right));
-	}
-}
-
-impl FromStr for tree::Tree<Uuid> {
-	type Err = tree::ParseTreeError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-
 	}
 }
 
@@ -33,7 +24,7 @@ fn build_tree(h: u32) -> Option<Box<tree::Tree<Uuid>>> {
 	// Recursively building a tree and running the simulation after wards to ensure a bottom-up
 	// execution order.
 	if h != 0 {
-		result = Some(Box::new(tree::combine_trees(Uuid::new_v4(), build_tree(h - 1), build_tree(h - 1))));
+		result = Some(Box::new(tree::Tree::new(Uuid::new_v4(), build_tree(h - 1), build_tree(h - 1))));
 		match &result {
 			Some(r) => (*r).run_simulation(),
 			_ => ()
@@ -55,10 +46,15 @@ pub fn run_bracket() {
 		println!("=========================================");
 		println!("Running bracket...");
 		height += 1;
-		tree = tree::combine_trees(Uuid::new_v4(), Some(Box::new(tree)), build_tree(height));
+		tree = tree::Tree::new(Uuid::new_v4(), Some(Box::new(tree)), build_tree(height));
 		tree.run_simulation();
 
 		if height == 3 {
+			println!("{}\n\n", tree);
+			let s = format!("{}", tree);
+			println!("{}\n\n", s);
+			// let tree2: tree::Tree<Uuid> = FromStr::from_str(&s).expect("");
+			// println!("{}\n\n", tree2);
 			break;
 		}
 	}

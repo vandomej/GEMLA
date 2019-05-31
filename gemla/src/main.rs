@@ -1,9 +1,11 @@
+#[macro_use]
+extern crate clap;
+extern crate regex;
+
 mod bracket;
 mod tree;
 mod constants;
 
-#[macro_use]
-extern crate clap;
 use clap::App;
 use std::fs::metadata;
 

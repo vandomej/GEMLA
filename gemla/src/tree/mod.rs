@@ -1,16 +1,21 @@
 use std::fmt;
 
+use std::str::FromStr;
+use regex::Regex;
+
 pub struct Tree<T> {
 	pub val: T,
 	pub left: Option<Box<Tree<T>>>,
 	pub right: Option<Box<Tree<T>>>
 }
 
-pub fn combine_trees<T>(v: T, l: Option<Box<Tree<T>>>, r: Option<Box<Tree<T>>>) -> Tree<T> {
-	Tree {
-		val: v,
-		left: l,
-		right: r
+impl<T> Tree<T> {
+	pub fn new(val: T, left: Option<Box<Tree<T>>>, right: Option<Box<Tree<T>>>) -> Tree<T> {
+		Tree {
+			val,
+			left,
+			right
+		}
 	}
 }
 
@@ -34,6 +39,87 @@ pub fn fmt_node<T: fmt::Display>(t: &Option<Box<Tree<T>>>) -> String {
 	}
 }
 
-struct ParseTreeError {
-	msg: String
+fn seperate_nodes(s: &str) -> Result<(&str, &str), ParseTreeError> {
+	let mut result = Err(ParseTreeError::new(format!("Unable to seperate string: {}", s)));
+	let mut stack: Vec<char> = Vec::new();
+
+	for (i, c) in s.char_indices() {
+		if c == '(' {
+			stack.push(c);
+		} else if c == ')' {
+			if stack.is_empty() {
+				result = Err(ParseTreeError::new(format!("Unbalanced parenthesis found in string: {}", s)));
+				break;
+			}
+
+			stack.pop();
+		} else if c == '(' && stack.is_empty() {
+			result = Ok((&s[..i], &s[i+1..]));
+			break;
+		}
+	}
+
+	result
+}
+
+fn from_str_helper<T>(s: &str) -> Result<Option<Box<Tree<T>>>, ParseTreeError> {
+	let mut result = Err(ParseTreeError::new(String::from("Unable to parse tree, string format unrecognized.")));
+
+		
+
+	result
+}
+
+impl<T: FromStr> FromStr for Tree<T> {
+	type Err = ParseTreeError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let mut result = Err(ParseTreeError::new(String::from("Unable to parse tree, string format unreognized.")));
+		let re = Regex::new(r"\(([0-9a-fA-F-]+)\s*:\s*(.*)\)$").unwrap();
+		let caps = re.captures(s);
+
+		if let Some(c) = caps {
+			let val = T::from_str(c.get(1).unwrap().as_str());
+
+			if let Ok(v) = val {
+
+
+				match seperate_nodes(c.get(2).unwrap().as_str()) {
+					Ok((l, r)) => {
+						match (from_str_helper(l), from_str_helper(r)) {
+							(Ok(left), Ok(right)) => {
+								result = Ok(Tree::new(v, left, right));
+							},
+							(Err(e), _) => {
+								result = Err(e);
+							},
+							(_, Err(e)) => {
+								result = Err(e);
+							}
+						}
+					},
+					Err(e) => {
+						result = Err(e);
+					}
+				}
+			} else {
+				result = Err(ParseTreeError::new(format!("Unable to parse node value: {}", c.get(1).unwrap().as_str())));
+			}
+		}
+
+		result
+	}
+}
+
+#[derive(Debug)]
+pub struct ParseTreeError {
+	pub msg: String
+}
+
+impl ParseTreeError {
+	fn new(msg: String) -> ParseTreeError {
+		ParseTreeError {
+			msg
+		}
+	}
 }
