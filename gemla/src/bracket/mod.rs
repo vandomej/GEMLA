@@ -3,6 +3,7 @@ mod state;
 use super::tree;
 
 use uuid::Uuid;
+use std::str::FromStr;
 
 impl tree::Tree<Uuid> {
 	pub fn run_simulation(&self) {
@@ -53,8 +54,8 @@ pub fn run_bracket() {
 			println!("{}\n\n", tree);
 			let s = format!("{}", tree);
 			println!("{}\n\n", s);
-			// let tree2: tree::Tree<Uuid> = FromStr::from_str(&s).expect("");
-			// println!("{}\n\n", tree2);
+			let tree2: tree::Tree<Uuid> = tree::Tree::from_str(&s).unwrap();
+			println!("{}\n\n", tree2);
 			break;
 		}
 	}
