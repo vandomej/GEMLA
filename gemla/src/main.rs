@@ -7,6 +7,9 @@ mod tree;
 mod constants;
 mod file_linked;
 
+#[cfg(test)]
+mod tests;
+
 use clap::App;
 use std::fs::metadata;
 

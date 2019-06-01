@@ -2,7 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 use regex::Regex;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq, Debug)]
 pub struct Tree<T> {
     pub val: T,
     pub left: Option<Box<Tree<T>>>,
@@ -12,6 +12,16 @@ pub struct Tree<T> {
 impl<T> Tree<T> {
     pub fn new(val: T, left: Option<Box<Tree<T>>>, right: Option<Box<Tree<T>>>) -> Tree<T> {
         Tree { val, left, right }
+    }
+
+    pub fn fmt_node(t: &Option<Box<Tree<T>>>) -> String
+    where
+        T: fmt::Display,
+    {
+        match t {
+            Some(n) => format!("{}", (*n).val),
+            _ => String::from("_"),
+        }
     }
 }
 
@@ -26,18 +36,11 @@ impl<T: fmt::Display> fmt::Display for Tree<T> {
 
         write!(
             f,
-            "({} :{}|{})",
+            "({}: {}|{})",
             self.val,
             node_str(&self.left),
             node_str(&self.right)
         )
-    }
-}
-
-pub fn fmt_node<T: fmt::Display>(t: &Option<Box<Tree<T>>>) -> String {
-    match t {
-        Some(n) => format!("{}", (*n).val),
-        _ => String::from("_"),
     }
 }
 
