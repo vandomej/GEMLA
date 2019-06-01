@@ -2,8 +2,9 @@
 extern crate clap;
 extern crate regex;
 
-mod bracket;
+#[macro_use]
 mod tree;
+mod bracket;
 mod constants;
 mod file_linked;
 

@@ -20,9 +20,9 @@ fn test_new() {
 fn test_fmt() {
     assert_eq!(
         format!(
-            "{}",
-            Tree::new("foo", Some(Box::new(Tree::new("bar", None, None))), None)
-        ),
+			"{}",
+			btree!("foo", btree!("bar"),),
+		),
         "(foo: (bar: _|_)|_)"
     );
 }
@@ -30,17 +30,11 @@ fn test_fmt() {
 #[test]
 fn test_fmt_node() {
     assert_eq!(
-        Tree::fmt_node(&Some(Box::new(Tree::new(
-            17,
-            Some(Box::new(Tree::new(16, None, None))),
-            Some(Box::new(Tree::new(12, None, None))),
-        )))),
+        Tree::fmt_node(&Some(Box::new(btree!(17, btree!(16), btree!(12))))),
         "17"
     );
     assert_eq!(
-        Tree::fmt_node(&Some(Box::new(
-            Tree::new(Tree::new("foo", None, None), None, None),
-        ))),
+        Tree::fmt_node(&Some(Box::new(btree!(btree!("foo"))))),
         "(foo: _|_)"
     );
     assert_eq!(Tree::<i32>::fmt_node(&None), "_");

@@ -9,6 +9,16 @@ pub struct Tree<T> {
     pub right: Option<Box<Tree<T>>>,
 }
 
+#[macro_export]
+macro_rules! btree {
+	($val:expr, $l:expr, $r:expr) => { 
+		$crate::tree::Tree::new($val, Some(Box::new($l)), Some(Box::new($r))) 
+		};
+	($val:expr, , $r:expr) => { $crate::tree::Tree::new($val, None, Some(Box::new($r))) };
+	($val:expr, $l:expr,) => { $crate::tree::Tree::new($val, Some(Box::new($l)), None) };
+	($val:expr) => { Tree::new($val, None, None) };
+}
+
 impl<T> Tree<T> {
     pub fn new(val: T, left: Option<Box<Tree<T>>>, right: Option<Box<Tree<T>>>) -> Tree<T> {
         Tree { val, left, right }
@@ -109,76 +119,11 @@ where
     type Err = ParseTreeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut result = Err(ParseTreeError::new(String::from(
-            "Unable to parse tree, string format unreognized.",
-        )));
-        let re = Regex::new(r"\(([0-9a-fA-F-]+)\s*:\s*(.*)\)$").unwrap();
-        let caps = re.captures(s);
-
-        if let Some(c) = caps {
-            let val = T::from_str(c.get(1).unwrap().as_str()).or(Err(
-                ParseTreeError::new(
-                    format!(
-                        "Unable to parse node value: {}",
-                        c.get(1)
-                            .unwrap()
-                            .as_str()
-                    ),
-                ),
-            ))?;
-            let (left, right) = seperate_nodes(c.get(2).unwrap().as_str())?;
-            let left = from_str_helper(left)?;
-            let right = from_str_helper(right)?;
-
-            result = Ok(Tree::new(val, left, right));
-        }
-
-        // if let Some(c) = caps {
-        // 	result = T::from_str(c.get(1).unwrap().as_str())
-        // 	.or(Err(ParseTreeError::new(
-        //  format!("Unable to parse node value: {}", c.get(1).unwrap().as_str()))))
-        // 	.and_then(|v| {
-        // 		seperate_nodes(c.get(2).unwrap().as_str())
-        // 		.and_then(|(left, right)| {
-        // 			from_str_helper(left)
-        // 			.and_then(|l| {
-        // 				from_str_helper(right)
-        // 				.and_then(|r| {
-        // 					Ok(Tree::new(v, l, r))
-        // 				})
-        // 			})
-        // 		})
-        // 	})
-        // }
-
-        // if let Some(c) = caps {
-        // 	let val = T::from_str(c.get(1).unwrap().as_str());
-        // 	if let Ok(v) = val {
-        // 		match seperate_nodes(c.get(2).unwrap().as_str()) {
-        // 			Ok((l, r)) => {
-        // 				match (from_str_helper(l), from_str_helper(r)) {
-        // 					(Ok(left), Ok(right)) => {
-        // 						result = Ok(Tree::new(v, left, right));
-        // 					},
-        // 					(Err(e), _) => {
-        // 						result = Err(e);
-        // 					},
-        // 					(_, Err(e)) => {
-        // 						result = Err(e);
-        // 					}
-        // 				}
-        // 			},
-        // 			Err(e) => {
-        // 				result = Err(e);
-        // 			}
-        // 		}
-        // 	} else {
-        // 		result = Err(ParseTreeError::new(
-        //    format!("Unable to parse node value: {}", c.get(1).unwrap().as_str())));
-        // 	}
-        // }
+        let result = from_str_helper(s)?;
 
         result
+            .ok_or(ParseTreeError::new(format!("Unable to parse string {}", s)))
+            .and_then(|t| Ok(*t))
     }
 }
 
