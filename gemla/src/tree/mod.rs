@@ -2,6 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 use regex::Regex;
 
+#[derive(Default, Clone)]
 pub struct Tree<T> {
 	pub val: T,
 	pub left: Option<Box<Tree<T>>>,

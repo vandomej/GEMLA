@@ -28,6 +28,11 @@ fn main() {
 			println!("{} is a valid directory!", directory);
 			println!("Building tree for {}.", directory);
 			bracket::run_bracket();
+
+			println!("\n\nReading tree from temp file.");
+			let tree: file_linked::FileLinked<tree::Tree<uuid::Uuid>> = file_linked::FileLinked::from_file("temp")
+				.expect("Unable to read tree from existing file");
+			println!("Value read from file:\n{}", tree);
 		},
 		Ok(_) => println!("{} is not a valid directory!", directory),
 		_ => println!("{} does not exist!", directory)
