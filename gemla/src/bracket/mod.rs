@@ -25,23 +25,15 @@ impl tree::Tree<Uuid> {
 
 /// Constructs a tree with a given height while simultaneously running a simulation on each node.
 fn build_tree(h: u32) -> Option<Box<tree::Tree<Uuid>>> {
-    let mut result: Option<Box<tree::Tree<Uuid>>> = None;
-
     // Recursively building a tree and running the simulation after wards to ensure a bottom-up
     // execution order.
     if h != 0 {
-        result = Some(Box::new(tree::Tree::new(
-            Uuid::new_v4(),
-            build_tree(h - 1),
-            build_tree(h - 1),
-        )));
-        match &result {
-            Some(r) => (*r).run_simulation(),
-            _ => (),
-        }
+        let tree = tree::Tree::new(Uuid::new_v4(), build_tree(h - 1), build_tree(h - 1));
+        tree.run_simulation();
+        Some(Box::new(tree))
+    } else {
+        None
     }
-
-    result
 }
 
 /// Generates a bracket tree and runs simulation against each node.

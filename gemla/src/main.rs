@@ -28,7 +28,7 @@ fn main() {
     let directory = matches.value_of(constants::args::DIRECTORY).unwrap();
     let metadata = metadata(directory);
     match &metadata {
-        Ok(m) if m.is_dir() == true => {
+        Ok(m) if m.is_dir() => {
             println!("{} is a valid directory!", directory);
             println!("Building tree for {}.", directory);
             bracket::run_bracket();

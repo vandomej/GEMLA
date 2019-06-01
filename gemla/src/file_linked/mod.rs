@@ -19,20 +19,17 @@ where
 
         match &meta {
             Ok(m) if m.is_file() => {
-                let mut file = fs::OpenOptions::new().read(true).open(path).or(
-                    Err(format!(
-                        "Unable to open file {}",
-                        path
-                    )),
-                )?;
+                let mut file = fs::OpenOptions::new().read(true).open(path).or_else(|_| {
+                    Err(format!("Unable to open file {}", path))
+                })?;
                 let mut s = String::new();
-                file.read_to_string(&mut s).or(Err(String::from(
-                    "Unable to read from file.",
-                )))?;
+                file.read_to_string(&mut s).or_else(|_| {
+                    Err(String::from("Unable to read from file."))
+                })?;
 
-                let val = T::from_str(&s).or(Err(String::from(
-                    "Unable to parse value from file.",
-                )))?;
+                let val = T::from_str(&s).or_else(|_| {
+                    Err(String::from("Unable to parse value from file."))
+                })?;
 
                 Ok(FileLinked {
                     val,
@@ -70,11 +67,11 @@ where
             .create(true)
             .truncate(true)
             .open(&self.path)
-            .or(Err(format!("Unable to open path {}", self.path)))?;
+            .or_else(|_| Err(format!("Unable to open path {}", self.path)))?;
 
-        write!(file, "{}", self.val).or(Err(String::from(
-            "Unable to write to file.",
-        )))?;
+        write!(file, "{}", self.val).or_else(|_| {
+            Err(String::from("Unable to write to file."))
+        })?;
 
         Ok(())
     }

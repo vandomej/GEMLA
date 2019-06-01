@@ -11,12 +11,15 @@ pub struct Tree<T> {
 
 #[macro_export]
 macro_rules! btree {
-	($val:expr, $l:expr, $r:expr) => { 
-		$crate::tree::Tree::new($val, Some(Box::new($l)), Some(Box::new($r))) 
-		};
-	($val:expr, , $r:expr) => { $crate::tree::Tree::new($val, None, Some(Box::new($r))) };
-	($val:expr, $l:expr,) => { $crate::tree::Tree::new($val, Some(Box::new($l)), None) };
-	($val:expr) => { Tree::new($val, None, None) };
+    ($val:expr, $l:expr, $r:expr) => { 
+    $crate::tree::Tree::new(
+        $val, 
+        Some(Box::new($l)), 
+        Some(Box::new($r))
+    ) };
+    ($val:expr, , $r:expr) => { $crate::tree::Tree::new($val, None, Some(Box::new($r))) };
+    ($val:expr, $l:expr,) => { $crate::tree::Tree::new($val, Some(Box::new($l)), None) };
+    ($val:expr) => { Tree::new($val, None, None) };
 }
 
 impl<T> Tree<T> {
@@ -90,16 +93,12 @@ fn from_str_helper<T: FromStr>(s: &str) -> Result<Option<Box<Tree<T>>>, ParseTre
     let caps = re.captures(s);
 
     if let Some(c) = caps {
-        let val = T::from_str(c.get(1).unwrap().as_str()).or(Err(
-            ParseTreeError::new(
-                format!(
-                    "Unable to parse node value: {}",
-                    c.get(1)
-                        .unwrap()
-                        .as_str()
-                ),
-            ),
-        ))?;
+        let val = T::from_str(c.get(1).unwrap().as_str()).or_else(|_| {
+            Err(ParseTreeError::new(format!(
+                "Unable to parse node value: {}",
+                c.get(1).unwrap().as_str()
+            )))
+        })?;
         let (left, right) = seperate_nodes(c.get(2).unwrap().as_str())?;
         let left = from_str_helper(left)?;
         let right = from_str_helper(right)?;
@@ -122,7 +121,9 @@ where
         let result = from_str_helper(s)?;
 
         result
-            .ok_or(ParseTreeError::new(format!("Unable to parse string {}", s)))
+            .ok_or_else(|| {
+                ParseTreeError::new(format!("Unable to parse string {}", s))
+            })
             .and_then(|t| Ok(*t))
     }
 }
