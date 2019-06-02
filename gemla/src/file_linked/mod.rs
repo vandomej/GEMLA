@@ -2,6 +2,7 @@ use std::fs;
 use std::str::FromStr;
 use std::fmt;
 use std::string::String;
+use std::string::ToString;
 use std::io::Read;
 use std::io::Write;
 
@@ -12,7 +13,7 @@ pub struct FileLinked<T> {
 
 impl<T> FileLinked<T>
 where
-    T: FromStr + fmt::Display + Default,
+    T: FromStr + ToString + Default,
 {
     pub fn from_file(path: &str) -> Result<FileLinked<T>, String> {
         let meta = fs::metadata(path);
@@ -69,7 +70,7 @@ where
             .open(&self.path)
             .or_else(|_| Err(format!("Unable to open path {}", self.path)))?;
 
-        write!(file, "{}", self.val).or_else(|_| {
+        write!(file, "{}", self.val.to_string()).or_else(|_| {
             Err(String::from("Unable to write to file."))
         })?;
 

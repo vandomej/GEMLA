@@ -11,7 +11,7 @@ impl tree::Tree<Uuid> {
         println!("================================");
         println!("Running simulation for node: {}", self.val);
         println!(
-            "With children {} and {}",
+            "With children {} and {}\n",
             tree::Tree::fmt_node(&self.left),
             tree::Tree::fmt_node(&self.right)
         );

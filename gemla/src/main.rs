@@ -3,10 +3,10 @@ extern crate clap;
 extern crate regex;
 
 #[macro_use]
-mod tree;
-mod bracket;
-mod constants;
-mod file_linked;
+pub mod tree;
+pub mod bracket;
+pub mod constants;
+pub mod file_linked;
 
 #[cfg(test)]
 mod tests;
