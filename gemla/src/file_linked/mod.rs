@@ -15,7 +15,8 @@ impl<T> FileLinked<T>
 where
     T: FromStr + ToString + Default,
 {
-    pub fn from_file(path: &str) -> Result<FileLinked<T>, String> {
+    pub fn from_file(path: &str) -> Result<FileLinked<T>, String>
+    {
         let meta = fs::metadata(path);
 
         match &meta {

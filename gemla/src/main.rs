@@ -35,7 +35,7 @@ fn main() {
 
             println!("\n\nReading tree from temp file.");
             let tree: file_linked::FileLinked<tree::Tree<uuid::Uuid>> =
-                file_linked::FileLinked::from_file("temp").expect(
+                file_linked::FileLinked::from_file("./for_tests").expect(
                     "Unable to read tree from existing file",
                 );
             println!("Value read from file:\n{}", tree);

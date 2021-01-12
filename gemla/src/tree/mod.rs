@@ -24,8 +24,9 @@
 //! ```
 
 use std::fmt;
+use serde::{Serialize, Deserialize};
+use serde::de::DeserializeOwned;
 use std::str::FromStr;
-use regex::Regex;
 
 /// An unbalanced binary tree type where each node has an optional left and right child.
 /// 
@@ -48,7 +49,7 @@ use regex::Regex;
 /// let t1 = btree!(1,btree!(2),btree!(3))
 /// assert_eq!(format!("{}", t1), "(1: (2: _|_)|(3: _|_)")
 /// ```
-#[derive(Default, Clone, PartialEq, Debug)]
+#[derive(Default, Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct Tree<T> {
     pub val: T,
     pub left: Option<Box<Tree<T>>>,
@@ -95,6 +96,7 @@ impl<T> Tree<T> {
     where
         T: fmt::Display,
     {
+
         match t {
             Some(n) => format!("{}", (*n).val),
             _ => String::from("_"),
@@ -102,103 +104,26 @@ impl<T> Tree<T> {
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Tree<T> {
+impl<T: fmt::Display + Serialize> fmt::Display for Tree<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let node_str = |t: &Option<Box<Tree<T>>>| -> String {
-            match t {
-                Some(n) => format!("{}", *n),
-                _ => String::from("_"),
-            }
-        };
-
-        write!(
-            f,
-            "({}: {}|{})",
-            self.val,
-            node_str(&self.left),
-            node_str(&self.right)
-        )
-    }
-}
-
-fn seperate_nodes(s: &str) -> Result<(&str, &str), ParseTreeError> {
-    let mut result = Err(ParseTreeError::new(
-        format!("Unable to seperate string: {}", s),
-    ));
-    let mut stack: Vec<char> = Vec::new();
-
-    for (i, c) in s.char_indices() {
-        if c == '(' {
-            stack.push(c);
-        } else if c == ')' {
-            if stack.is_empty() {
-                result = Err(ParseTreeError::new(
-                    format!("Unbalanced parenthesis found in string: {}", s),
-                ));
-                break;
-            }
-
-            stack.pop();
-        } else if c == '|' && stack.is_empty() {
-            result = Ok((&s[..i], &s[i + 1..]));
-            break;
+        let result = toml::to_string(self);
+        
+        match result
+        {
+            Ok(string) => write!(f, "{}", string),
+            Err(_) => Err(std::fmt::Error),
         }
     }
-
-    result
 }
 
-fn from_str_helper<T: FromStr>(s: &str) -> Result<Option<Box<Tree<T>>>, ParseTreeError> {
-    let mut result = Err(ParseTreeError::new(String::from(
-        "Unable to parse tree, string format unrecognized.",
-    )));
-    let emptyre = Regex::new(r"\s*_\s*").unwrap();
-    let re = Regex::new(r"\(([0-9a-fA-F-]+)\s*:\s*(.*)\)$").unwrap();
-    let caps = re.captures(s);
-
-    if let Some(c) = caps {
-        let val = T::from_str(c.get(1).unwrap().as_str()).or_else(|_| {
-            Err(ParseTreeError::new(format!(
-                "Unable to parse node value: {}",
-                c.get(1).unwrap().as_str()
-            )))
-        })?;
-        let (left, right) = seperate_nodes(c.get(2).unwrap().as_str())?;
-        let left = from_str_helper(left)?;
-        let right = from_str_helper(right)?;
-
-        result = Ok(Some(Box::new(Tree::new(val, left, right))));
-    } else if emptyre.is_match(s) {
-        result = Ok(None);
-    }
-
-    result
-}
 
 impl<T> FromStr for Tree<T>
-where
-    T: FromStr,
+    where T: FromStr + DeserializeOwned
 {
-    type Err = ParseTreeError;
+    type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let result = from_str_helper(s)?;
-
-        result
-            .ok_or_else(|| {
-                ParseTreeError::new(format!("Unable to parse string {}", s))
-            })
-            .and_then(|t| Ok(*t))
-    }
-}
-
-#[derive(Debug)]
-pub struct ParseTreeError {
-    pub msg: String,
-}
-
-impl ParseTreeError {
-    fn new(msg: String) -> ParseTreeError {
-        ParseTreeError { msg }
+    fn from_str(s: &str) -> Result<Self, Self::Err>
+    {
+        toml::from_str(s).or_else(|_| {Err(format!("Unable to parse string {}", s))})
     }
 }

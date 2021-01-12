@@ -43,7 +43,7 @@ pub fn run_bracket() {
     let mut height = 1;
     let mut tree = FileLinked::new(
         *build_tree(height).expect("Error getting result from build_tree"),
-        "temp",
+        "for_tests",
     ).expect("Unable to create file linked object from tree");
 
 
