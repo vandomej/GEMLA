@@ -1,10 +1,10 @@
 mod state;
 
-use super::tree;
 use super::file_linked::FileLinked;
+use super::tree;
 
-use uuid::Uuid;
 use std::str::FromStr;
+use uuid::Uuid;
 
 impl tree::Tree<Uuid> {
     pub fn run_simulation(&self) {
@@ -44,8 +44,8 @@ pub fn run_bracket() {
     let mut tree = FileLinked::new(
         *build_tree(height).expect("Error getting result from build_tree"),
         "for_tests",
-    ).expect("Unable to create file linked object from tree");
-
+    )
+    .expect("Unable to create file linked object from tree");
 
     // Building tree one node at a time, appending to the top.
     loop {
@@ -56,7 +56,8 @@ pub fn run_bracket() {
             Uuid::new_v4(),
             Some(Box::new(tree.readonly().clone())),
             build_tree(height),
-        )).expect("Error building up tree node");
+        ))
+        .expect("Error building up tree node");
         tree.readonly().run_simulation();
 
         if height == 3 {

@@ -18,12 +18,8 @@ fn test_new() {
 
 #[test]
 fn test_fmt() {
-    
     assert_eq!(
-        format!(
-			"{}",
-			btree!("foo", btree!("bar"),),
-		),
+        format!("{}", btree!("foo", btree!("bar"),),),
         "val = \"foo\"\n\n[left]\nval = \"bar\"\n"
     );
 }
@@ -31,10 +27,7 @@ fn test_fmt() {
 #[test]
 fn test_fmt_node() {
     let t = btree!(17, btree!(16), btree!(12));
-    assert_eq!(
-        Tree::fmt_node(&t.left),
-        "16"
-    );
+    assert_eq!(Tree::fmt_node(&t.left), "16");
     assert_eq!(
         Tree::fmt_node(&Some(Box::new(btree!(btree!("foo"))))),
         "val = \"foo\"\n"
