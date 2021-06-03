@@ -24,13 +24,16 @@ impl tree::Tree<Uuid> {
 // }
 
 /// Constructs a tree with a given height while simultaneously running a simulation on each node.
-fn build_tree(h: u32) -> Option<Box<tree::Tree<Uuid>>> {
+fn build_tree(h: u32) -> Option<tree::Tree<Uuid>> {
     // Recursively building a tree and running the simulation after wards to ensure a bottom-up
     // execution order.
     if h != 0 {
-        let tree = tree::Tree::new(Uuid::new_v4(), build_tree(h - 1), build_tree(h - 1));
+        let tree = btree!(
+                Uuid::new_v4(), 
+                build_tree(h - 1), 
+                build_tree(h - 1));
         tree.run_simulation();
-        Some(Box::new(tree))
+        Some(tree)
     } else {
         None
     }
@@ -42,7 +45,7 @@ fn build_tree(h: u32) -> Option<Box<tree::Tree<Uuid>>> {
 pub fn run_bracket() {
     let mut height = 1;
     let mut tree = FileLinked::new(
-        *build_tree(height).expect("Error getting result from build_tree"),
+        build_tree(height).expect("Error getting result from build_tree"),
         "for_tests",
     )
     .expect("Unable to create file linked object from tree");
@@ -52,10 +55,10 @@ pub fn run_bracket() {
         println!("=========================================");
         println!("Running bracket...");
         height += 1;
-        tree.replace(tree::Tree::new(
+        tree.replace(btree!(
             Uuid::new_v4(),
-            Some(Box::new(tree.readonly().clone())),
-            build_tree(height),
+            Some(tree.readonly().clone()),
+            build_tree(height)
         ))
         .expect("Error building up tree node");
         tree.readonly().run_simulation();

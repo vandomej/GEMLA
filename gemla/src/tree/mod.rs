@@ -62,13 +62,13 @@ pub struct Tree<T> {
 ///
 /// ```
 /// // A tree with two child nodes.
-/// let t = btree!(1, btree!(2), btree!(3));
+/// let t = btree!(1, Some(btree!(2)), Some(btree!(3)));
 ///
 /// // A tree with only a left node.
-/// let t_left = btree!(1, btree!(2),);
+/// let t_left = btree!(1, Some(btree!(2)),);
 ///
 /// // A tree with only a right node.
-/// let t_right = btree!(1, ,btree!(3));
+/// let t_right = btree!(1, ,Some(btree!(3)));
 ///
 /// // A tree with no children nodes.
 /// let t_single = btree!(1)
@@ -76,13 +76,16 @@ pub struct Tree<T> {
 #[macro_export]
 macro_rules! btree {
     ($val:expr, $l:expr, $r:expr) => {
-        $crate::tree::Tree::new($val, Some(Box::new($l)), Some(Box::new($r)))
+        $crate::tree::Tree::new(
+                $val, 
+                $l.and_then(|l| Some(Box::new(l))), 
+                $r.and_then(|r| Some(Box::new(r))))
     };
     ($val:expr, , $r:expr) => {
-        $crate::tree::Tree::new($val, None, Some(Box::new($r)))
+        $crate::tree::Tree::new($val, None, $r.and_then(|r| Some(Box::new(r))))
     };
     ($val:expr, $l:expr,) => {
-        $crate::tree::Tree::new($val, Some(Box::new($l)), None)
+        $crate::tree::Tree::new($val, $l.and_then(|l| Some(Box::new(l))), None)
     };
     ($val:expr) => {
         Tree::new($val, None, None)

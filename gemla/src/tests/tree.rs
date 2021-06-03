@@ -19,14 +19,14 @@ fn test_new() {
 #[test]
 fn test_fmt() {
     assert_eq!(
-        format!("{}", btree!("foo", btree!("bar"),),),
+        format!("{}", btree!("foo", Some(btree!("bar")),),),
         "val = \"foo\"\n\n[left]\nval = \"bar\"\n"
     );
 }
 
 #[test]
 fn test_fmt_node() {
-    let t = btree!(17, btree!(16), btree!(12));
+    let t = btree!(17, Some(btree!(16)), Some(btree!(12)));
     assert_eq!(Tree::fmt_node(&t.left), "16");
     assert_eq!(
         Tree::fmt_node(&Some(Box::new(btree!(btree!("foo"))))),
