@@ -31,7 +31,6 @@ fn main() {
         Ok(m) if m.is_dir() => {
             println!("{} is a valid directory!", directory);
             println!("Building tree for {}.", directory);
-            bracket::run_bracket();
         }
         Ok(_) => println!("{} is not a valid directory!", directory),
         _ => println!("{} does not exist!", directory),

@@ -88,7 +88,7 @@ macro_rules! btree {
         $crate::tree::Tree::new($val, $l.and_then(|l| Some(Box::new(l))), None)
     };
     ($val:expr) => {
-        Tree::new($val, None, None)
+        $crate::tree::Tree::new($val, None, None)
     };
 }
 
@@ -111,7 +111,7 @@ impl<T> Tree<T> {
 
 impl<T: fmt::Display + Serialize> fmt::Display for Tree<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = toml::to_string(self);
+        let result = serde_json::to_string(self);
 
         match result {
             Ok(string) => write!(f, "{}", string),
@@ -127,6 +127,6 @@ where
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+        serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
     }
 }

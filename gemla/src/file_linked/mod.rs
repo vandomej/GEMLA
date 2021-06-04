@@ -21,10 +21,10 @@ impl<T> FileLinked<T>
 where
     T: ToString,
 {
-    pub fn new(val: T, path: &str) -> Result<FileLinked<T>, String> {
+    pub fn new(val: T, path: String) -> Result<FileLinked<T>, String> {
         let result = FileLinked {
             val,
-            path: String::from(path),
+            path,
         };
 
         result.write_data()?;
@@ -32,7 +32,7 @@ where
         Ok(result)
     }
 
-    pub fn write_data(&self) -> Result<(), String> {
+    fn write_data(&self) -> Result<(), String> {
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create(true)

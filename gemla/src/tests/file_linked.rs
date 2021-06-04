@@ -1,21 +1,20 @@
 use super::super::file_linked::FileLinked;
-use super::super::tree::Tree;
 
 #[test]
 fn test_mutate() -> Result<(), String> {
     let tree = btree!(1, Some(btree!(2)), Some(btree!(3, Some(btree!(4)),)));
-    let mut linked_tree = FileLinked::new(tree, "blah.txt")?;
+    let mut linked_tree = FileLinked::new(tree, String::from("blah.txt"))?;
 
     assert_eq!(
         format!("{}", linked_tree.readonly()),
-        "val = 1\n\n[left]\nval = 2\n\n[right]\nval = 3\n\n[right.left]\nval = 4\n"
+        "{\"val\":1,\"left\":{\"val\":2,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
     );
 
     linked_tree.mutate(|v1| v1.val = 10)?;
 
     assert_eq!(
         format!("{}", linked_tree.readonly()),
-        "val = 10\n\n[left]\nval = 2\n\n[right]\nval = 3\n\n[right.left]\nval = 4\n"
+        "{\"val\":10,\"left\":{\"val\":2,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
     );
 
     linked_tree.mutate(|v1| {
@@ -26,7 +25,7 @@ fn test_mutate() -> Result<(), String> {
 
     assert_eq!(
         format!("{}", linked_tree.readonly()),
-        "val = 10\n\n[left]\nval = 13\n\n[right]\nval = 3\n\n[right.left]\nval = 4\n"
+        "{\"val\":10,\"left\":{\"val\":13,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
     );
 
     Ok(())

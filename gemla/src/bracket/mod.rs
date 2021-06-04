@@ -1,75 +1,91 @@
-mod state;
+pub mod genetic_state;
 
 use super::file_linked::FileLinked;
 use super::tree;
 
+use std::fmt;
 use std::str::FromStr;
-use uuid::Uuid;
+use std::string::ToString;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
-impl tree::Tree<Uuid> {
-    pub fn run_simulation(&self) {
-        println!("================================");
-        println!("Running simulation for node: {}", self.val);
-        println!(
-            "With children {} and {}\n",
-            tree::Tree::fmt_node(&self.left),
-            tree::Tree::fmt_node(&self.right)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "enumType", content = "enumContent")]
+pub enum IterationScaling {
+    Linear(u32)
+}
+
+impl Default for IterationScaling {
+    fn default() -> Self {
+        IterationScaling::Linear(1)
+    }
+}
+
+impl fmt::Display for IterationScaling {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", serde_json::to_string(self).expect("Unable to deserialize IterationScaling struct"))
+    }
+}
+
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Bracket<T> {
+    tree: tree::Tree<T>,
+    step: u32,
+    iteration_scaling: IterationScaling
+}
+
+impl<T: fmt::Display + Serialize> fmt::Display for Bracket<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", serde_json::to_string(self).expect("Unable to deserialize Bracket struct"))
+    }
+}
+
+impl<T> Bracket<T> 
+    where T: genetic_state::GeneticState + ToString + FromStr + Default + fmt::Display + DeserializeOwned + Serialize + Clone
+{
+    pub fn initialize(file_path: String) -> Result<FileLinked<Self>, String>
+    {
+        FileLinked::new(
+            Bracket
+            {
+                tree: btree!(T::initialize()),
+                step: 0,
+                iteration_scaling: IterationScaling::default()
+            }
+        ,file_path)
+    }
+
+    pub fn iteration_scaling(&mut self, iteration_scaling: IterationScaling) -> &mut Self
+    {
+        self.iteration_scaling = iteration_scaling;
+        self
+    }
+
+    pub fn run_simulation_step(&mut self) -> &mut Self 
+    {
+        self.tree.val.run_simulation(
+            match self.iteration_scaling
+            {
+                IterationScaling::Linear(x) => x
+            }
         );
-    }
-}
 
-// pub struct Bracket {
-//     tree: tree::Tree,
-//     directory: String
-// }
+        let mut new_branch = btree!(T::initialize());
+        new_branch.val.run_simulation(
+            match self.iteration_scaling
+            {
+                IterationScaling::Linear(x) => x * (self.step + 1)
+            }
+        );
 
-/// Constructs a tree with a given height while simultaneously running a simulation on each node.
-fn build_tree(h: u32) -> Option<tree::Tree<Uuid>> {
-    // Recursively building a tree and running the simulation after wards to ensure a bottom-up
-    // execution order.
-    if h != 0 {
-        let tree = btree!(
-                Uuid::new_v4(), 
-                build_tree(h - 1), 
-                build_tree(h - 1));
-        tree.run_simulation();
-        Some(tree)
-    } else {
-        None
-    }
-}
+        self.tree = btree!(
+            self.tree.val.clone(), 
+            Some(self.tree.clone()),
+            Some(new_branch)
+        );
+        self.step += 1;
 
-/// Generates a bracket tree and runs simulation against each node.
-///
-/// TODO: Explain reasoning for bracket system against genetic algorithm.
-pub fn run_bracket() {
-    let mut height = 1;
-    let mut tree = FileLinked::new(
-        build_tree(height).expect("Error getting result from build_tree"),
-        "for_tests",
-    )
-    .expect("Unable to create file linked object from tree");
-
-    // Building tree one node at a time, appending to the top.
-    loop {
-        println!("=========================================");
-        println!("Running bracket...");
-        height += 1;
-        tree.replace(btree!(
-            Uuid::new_v4(),
-            Some(tree.readonly().clone()),
-            build_tree(height)
-        ))
-        .expect("Error building up tree node");
-        tree.readonly().run_simulation();
-
-        if height == 3 {
-            println!("{}\n\n", tree);
-            let s = format!("{}", tree);
-            println!("{}\n\n", s);
-            let tree2: tree::Tree<Uuid> = tree::Tree::from_str(&s).unwrap();
-            println!("{}\n\n", tree2);
-            break;
-        }
+        self
     }
 }
