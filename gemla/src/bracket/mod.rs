@@ -31,7 +31,7 @@ impl fmt::Display for IterationScaling {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Bracket<T> {
     tree: tree::Tree<T>,
-    step: u32,
+    step: u64,
     iteration_scaling: IterationScaling
 }
 
@@ -62,28 +62,67 @@ impl<T> Bracket<T>
         self
     }
 
-    pub fn run_simulation_step(&mut self) -> &mut Self 
+    pub fn create_new_branch(&self, height: u64) -> tree::Tree<T>
     {
+        if height == 1
+        {
+            let mut base_node = btree!(T::initialize());
+
+            base_node.val.run_simulation(
+                match self.iteration_scaling
+                {
+                    IterationScaling::Linear(x) => (x * (height as u32)).into()
+                }
+            );
+
+            btree!(base_node.val.clone())
+        }
+        else
+        {
+            let left = self.create_new_branch(height - 1);
+            let right = self.create_new_branch(height - 1);
+            let mut new_val = if left.val.get_fit_score() >= right.val.get_fit_score() 
+            {
+                left.val.clone()
+            }
+            else {
+                right.val.clone()
+            };
+
+            new_val.run_simulation(
+                match self.iteration_scaling
+                {
+                    IterationScaling::Linear(x) => (x * (height as u32)).into()
+                }
+            );
+
+            btree!(new_val, Some(left), Some(right))
+        }
+    }
+
+    pub fn run_simulation_step(&mut self) -> &mut Self    
+    {
+        let new_branch = self.create_new_branch(self.step + 1);
+
         self.tree.val.run_simulation(
             match self.iteration_scaling
             {
-                IterationScaling::Linear(x) => x
+                IterationScaling::Linear(x) => ((x as u64) * (self.step + 1)).into()
             }
         );
 
-        let mut new_branch = btree!(T::initialize());
-        new_branch.val.run_simulation(
-            match self.iteration_scaling
-            {
-                IterationScaling::Linear(x) => x * (self.step + 1)
-            }
-        );
+        let new_val = if new_branch.val.get_fit_score() >= self.tree.val.get_fit_score()
+        {
+            new_branch.val.clone()
+        }
+        else
+        {
+            self.tree.val.clone()
+        };
 
-        self.tree = btree!(
-            self.tree.val.clone(), 
-            Some(self.tree.clone()),
-            Some(new_branch)
-        );
+
+        self.tree = btree!(new_val, Some(new_branch), Some(self.tree.clone()));
+
         self.step += 1;
 
         self

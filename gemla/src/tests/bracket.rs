@@ -33,7 +33,7 @@ impl TestState {
 }
 
 impl bracket::genetic_state::GeneticState for TestState {
-    fn run_simulation(&mut self, iterations: u32)
+    fn run_simulation(&mut self, iterations: u64)
     {
         self.score += iterations as f64;
     }
@@ -81,15 +81,25 @@ fn test_run() {
         format!("{}", bracket),
         format!("{{\"tree\":{},\"step\":3,\"iteration_scaling\":{{\"enumType\":\"Linear\",\"enumContent\":2}}}}", 
         btree!(
-            TestState::new(6.0),
+            TestState::new(12.0),
             Some(btree!(
-                TestState::new(6.0),
-                Some(btree!(TestState::new(4.0),
+                TestState::new(12.0),
+                Some(btree!(TestState::new(6.0),
                     Some(btree!(TestState::new(2.0))),
                     Some(btree!(TestState::new(2.0))))),
-                Some(btree!(TestState::new(4.0)))
+                Some(btree!(TestState::new(6.0),
+                    Some(btree!(TestState::new(2.0))),
+                    Some(btree!(TestState::new(2.0)))))
             )),
-            Some(btree!(TestState::new(6.0)))
+            Some(btree!(
+                TestState::new(12.0),
+                Some(btree!(TestState::new(6.0),
+                    Some(btree!(TestState::new(2.0))),
+                    Some(btree!(TestState::new(2.0))))),
+                Some(btree!(TestState::new(6.0),
+                    Some(btree!(TestState::new(2.0))),
+                    Some(btree!(TestState::new(2.0)))))
+            ))
         ))
     );
 
