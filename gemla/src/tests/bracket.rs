@@ -60,6 +60,8 @@ fn test_new() {
         format!("{{\"tree\":{},\"step\":0,\"iteration_scaling\":{{\"enumType\":\"Linear\",\"enumContent\":1}}}}", 
         btree!(TestState::new(0.0)))
     );
+
+    std::fs::remove_file("./temp").expect("Unable to remove file");
 }
 
 #[test]
@@ -90,4 +92,6 @@ fn test_run() {
             Some(btree!(TestState::new(6.0)))
         ))
     );
+
+    std::fs::remove_file("./temp").expect("Unable to remove file");
 }

@@ -1,9 +1,11 @@
 use super::super::file_linked::FileLinked;
 
+use std::fs;
+
 #[test]
 fn test_mutate() -> Result<(), String> {
     let tree = btree!(1, Some(btree!(2)), Some(btree!(3, Some(btree!(4)),)));
-    let mut linked_tree = FileLinked::new(tree, String::from("blah.txt"))?;
+    let mut linked_tree = FileLinked::new(tree, String::from("test.txt"))?;
 
     assert_eq!(
         format!("{}", linked_tree.readonly()),
@@ -27,6 +29,8 @@ fn test_mutate() -> Result<(), String> {
         format!("{}", linked_tree.readonly()),
         "{\"val\":10,\"left\":{\"val\":13,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
     );
+
+    fs::remove_file("test.txt").expect("Unable to remove file");
 
     Ok(())
 }
