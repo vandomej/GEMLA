@@ -4,7 +4,7 @@ use std::fs;
 
 #[test]
 fn test_mutate() -> Result<(), String> {
-    let tree = btree!(1, Some(btree!(2)), Some(btree!(3, Some(btree!(4)),)));
+    let tree = btree!(1, btree!(2), btree!(3, btree!(4),));
     let mut linked_tree = FileLinked::new(tree, String::from("test.txt"))?;
 
     assert_eq!(

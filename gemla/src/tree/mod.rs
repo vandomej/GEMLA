@@ -77,15 +77,16 @@ pub struct Tree<T> {
 macro_rules! btree {
     ($val:expr, $l:expr, $r:expr) => {
         $crate::tree::Tree::new(
-                $val, 
-                $l.and_then(|l| Some(Box::new(l))), 
-                $r.and_then(|r| Some(Box::new(r))))
+            $val,
+            Some(Box::new($l)),
+            Some(Box::new($r)),
+        )
     };
     ($val:expr, , $r:expr) => {
-        $crate::tree::Tree::new($val, None, $r.and_then(|r| Some(Box::new(r))))
+        $crate::tree::Tree::new($val, None, Some(Box::new($r)))
     };
     ($val:expr, $l:expr,) => {
-        $crate::tree::Tree::new($val, $l.and_then(|l| Some(Box::new(l))), None)
+        $crate::tree::Tree::new($val, Some(Box::new($l)), None)
     };
     ($val:expr) => {
         $crate::tree::Tree::new($val, None, None)

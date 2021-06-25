@@ -2,10 +2,9 @@
 
 /// A trait used to interact with the internal state of nodes within the genetic bracket
 pub trait GeneticState {
-    
     /// Runs a simulation on the state object in order to guage it's fitness.
     /// - iterations: the number of iterations (learning cycles) that the current state should simulate
-    /// 
+    ///
     /// This will be called for every node in a bracket before evaluating it's fitness against other nodes.
     fn run_simulation(&mut self, iterations: u64);
 

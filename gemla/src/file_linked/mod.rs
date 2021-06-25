@@ -22,10 +22,7 @@ where
     T: ToString,
 {
     pub fn new(val: T, path: String) -> Result<FileLinked<T>, String> {
-        let result = FileLinked {
-            val,
-            path,
-        };
+        let result = FileLinked { val, path };
 
         result.write_data()?;
 
