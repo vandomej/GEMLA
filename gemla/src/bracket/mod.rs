@@ -1,3 +1,4 @@
+pub mod genetic_node;
 pub mod genetic_state;
 
 use super::file_linked::FileLinked;
@@ -9,7 +10,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::string::ToString;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Copy)]
 #[serde(tag = "enumType", content = "enumContent")]
 pub enum IterationScaling {
     Linear(u32),
@@ -50,7 +51,7 @@ impl<T: fmt::Display + Serialize> fmt::Display for Bracket<T> {
 
 impl<T> Bracket<T>
 where
-    T: genetic_state::GeneticState
+    T: genetic_node::GeneticNode
         + ToString
         + FromStr
         + Default
@@ -79,7 +80,7 @@ where
         if height == 1 {
             let mut base_node = btree!(T::initialize());
 
-            base_node.val.run_simulation(match self.iteration_scaling {
+            base_node.val.simulate(match self.iteration_scaling {
                 IterationScaling::Linear(x) => (x as u64) * height,
             });
 
@@ -93,7 +94,7 @@ where
                 right.val.clone()
             };
 
-            new_val.run_simulation(match self.iteration_scaling {
+            new_val.simulate(match self.iteration_scaling {
                 IterationScaling::Linear(x) => (x as u64) * height,
             });
 
@@ -104,7 +105,7 @@ where
     pub fn run_simulation_step(&mut self) -> &mut Self {
         let new_branch = self.create_new_branch(self.step + 1);
 
-        self.tree.val.run_simulation(match self.iteration_scaling {
+        self.tree.val.simulate(match self.iteration_scaling {
             IterationScaling::Linear(x) => ((x as u64) * (self.step + 1)),
         });
 

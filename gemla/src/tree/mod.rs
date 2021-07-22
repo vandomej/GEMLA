@@ -76,11 +76,7 @@ pub struct Tree<T> {
 #[macro_export]
 macro_rules! btree {
     ($val:expr, $l:expr, $r:expr) => {
-        $crate::tree::Tree::new(
-            $val,
-            Some(Box::new($l)),
-            Some(Box::new($r)),
-        )
+        $crate::tree::Tree::new($val, Some(Box::new($l)), Some(Box::new($r)))
     };
     ($val:expr, , $r:expr) => {
         $crate::tree::Tree::new($val, None, Some(Box::new($r)))

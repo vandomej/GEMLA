@@ -30,14 +30,18 @@ impl TestState {
     }
 }
 
-impl bracket::genetic_state::GeneticState for TestState {
-    fn run_simulation(&mut self, iterations: u64) {
+impl bracket::genetic_node::GeneticNode for TestState {
+    fn simulate(&mut self, iterations: u64) {
         self.score += iterations as f64;
     }
 
     fn get_fit_score(&self) -> f64 {
         self.score
     }
+
+    fn calculate_scores_and_trim(&mut self) {}
+
+    fn mutate(&mut self) {}
 
     fn initialize() -> Self {
         TestState { score: 0.0 }
@@ -66,7 +70,6 @@ fn test_run() {
     bracket
         .mutate(|b| drop(b.iteration_scaling(bracket::IterationScaling::Linear(2))))
         .expect("Failed to set iteration scaling");
-
     for _ in 0..3 {
         bracket
             .mutate(|b| drop(b.run_simulation_step()))
