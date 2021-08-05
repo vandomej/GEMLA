@@ -31,20 +31,25 @@ impl TestState {
 }
 
 impl bracket::genetic_node::GeneticNode for TestState {
-    fn simulate(&mut self, iterations: u64) {
+    fn simulate(&mut self, iterations: u64) -> Result<(), String> {
         self.score += iterations as f64;
+        Ok(())
     }
 
     fn get_fit_score(&self) -> f64 {
         self.score
     }
 
-    fn calculate_scores_and_trim(&mut self) {}
+    fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
-    fn mutate(&mut self) {}
+    fn mutate(&mut self) -> Result<(), String> {
+        Ok(())
+    }
 
-    fn initialize() -> Self {
-        TestState { score: 0.0 }
+    fn initialize() -> Result<Box<Self>, String> {
+        Ok(Box::new(TestState { score: 0.0 }))
     }
 }
 

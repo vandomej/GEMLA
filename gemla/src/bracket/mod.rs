@@ -63,7 +63,7 @@ where
     pub fn initialize(file_path: String) -> Result<FileLinked<Self>, String> {
         FileLinked::new(
             Bracket {
-                tree: btree!(T::initialize()),
+                tree: btree!(*T::initialize()?),
                 step: 0,
                 iteration_scaling: IterationScaling::default(),
             },
@@ -76,18 +76,18 @@ where
         self
     }
 
-    pub fn create_new_branch(&self, height: u64) -> tree::Tree<T> {
+    pub fn create_new_branch(&self, height: u64) -> Result<tree::Tree<T>, String> {
         if height == 1 {
-            let mut base_node = btree!(T::initialize());
+            let mut base_node = btree!(*T::initialize()?);
 
             base_node.val.simulate(match self.iteration_scaling {
                 IterationScaling::Linear(x) => (x as u64) * height,
-            });
+            })?;
 
-            btree!(base_node.val)
+            Ok(btree!(base_node.val))
         } else {
-            let left = self.create_new_branch(height - 1);
-            let right = self.create_new_branch(height - 1);
+            let left = self.create_new_branch(height - 1)?;
+            let right = self.create_new_branch(height - 1)?;
             let mut new_val = if left.val.get_fit_score() >= right.val.get_fit_score() {
                 left.val.clone()
             } else {
@@ -96,18 +96,18 @@ where
 
             new_val.simulate(match self.iteration_scaling {
                 IterationScaling::Linear(x) => (x as u64) * height,
-            });
+            })?;
 
-            btree!(new_val, left, right)
+            Ok(btree!(new_val, left, right))
         }
     }
 
-    pub fn run_simulation_step(&mut self) -> &mut Self {
-        let new_branch = self.create_new_branch(self.step + 1);
+    pub fn run_simulation_step(&mut self) -> Result<&mut Self, String> {
+        let new_branch = self.create_new_branch(self.step + 1)?;
 
         self.tree.val.simulate(match self.iteration_scaling {
             IterationScaling::Linear(x) => ((x as u64) * (self.step + 1)),
-        });
+        })?;
 
         let new_val = if new_branch.val.get_fit_score() >= self.tree.val.get_fit_score() {
             new_branch.val.clone()
@@ -119,6 +119,6 @@ where
 
         self.step += 1;
 
-        self
+        Ok(self)
     }
 }
