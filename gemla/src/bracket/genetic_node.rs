@@ -8,6 +8,46 @@ use std::fmt;
 /// A trait used to interact with the internal state of nodes within the genetic bracket
 pub trait GeneticNode {
     /// Initializes a new instance of a genetic state.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// #
+    /// struct Node {
+    ///     pub fit_score: f64,
+    ///  }
+    /// 
+    /// impl GeneticNode for Node {
+    ///     fn initialize() -> Result<Box<Self>, String> {
+    ///         Ok(Box::new(Node {fit_score: 0.0}))
+    ///     }
+    /// 
+    ///     //...
+    /// #
+    /// #   fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #       Ok(())
+    /// #   }
+    /// #
+    /// #   fn get_fit_score(&self) -> f64 {
+    /// #       self.fit_score
+    /// #   }
+    /// #
+    /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #       Ok(())
+    /// #   }
+    /// #
+    /// #   fn mutate(&mut self) -> Result<(), String> {
+    /// #       Ok(())
+    /// #   }
+    /// }
+    /// 
+    /// # fn main() -> Result<(), String> {
+    /// let node = Node::initialize()?;
+    /// assert_eq!(node.get_fit_score(), 0.0);
+    /// # Ok(())
+    /// # }
+    /// ```
     fn initialize() -> Result<Box<Self>, String>;
 
     /// Runs a simulation on the state object in order to guage it's fitness.

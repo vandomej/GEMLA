@@ -2,26 +2,27 @@
 //!
 //! # Examples
 //!
-//! ```
-//! let mut t = Tree::new(1, None, None);
-//! let t2 = Tree::new(2, Some(Box::new(t)), Some(Box::new(Tree::new(3, None, None))));
-//! let s = format!("{}", t2);
+//! ```no_run
+//! //let mut t = Tree::new(1, None, None);
+//! //let t2 = Tree::new(2, Some(Box::new(t)), Some(Box::new(Tree::new(3, None, None))));
+//! //let s = format!("{}", t2);
 //!
-//! assert_eq!(s, "(2: (1: _|_)|(3: _|_))");
-//! t.left = Some(Box::new(Tree::new(4, None, None)));
-//! assert_eq!(Tree::fmt_node(t.left), 4);
-//! assert_eq!(Tree::from_str(s), t2);
+//! //assert_eq!(s, "(2: (1: _|_)|(3: _|_))");
+//! //t.left = Some(Box::new(Tree::new(4, None, None)));
+//! //assert_eq!(Tree::fmt_node(t.left), 4);
+//! //assert_eq!(Tree::from_str(s), t2);
 //! ```
 //!
 //! Additionally the `btree!` macro can be used to conveniently initialize trees:
 //!
+//! ```no_run
+//! //# #[macro_use] extern crate tree;
+//! //# fn main() {
+//! //let t1 = btree!(1,btree!(2),btree!(3))
+//! //assert_eq!(format!("{}", t1), "(1: (2: _|_)|(3: _|_)")
+//! //# }
 //! ```
-//! # #[macro_use] extern crate tree;
-//! # fn main() {
-//! let t1 = btree!(1,btree!(2),btree!(3))
-//! assert_eq!(format!("{}", t1), "(1: (2: _|_)|(3: _|_)")
-//! # }
-//! ```
+
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -33,21 +34,21 @@ use std::str::FromStr;
 /// # Examples
 ///
 /// ```
-/// let mut t = Tree::new(1, None, None);
-/// let t2 = Tree::new(2, Some(Box::new(t)), Some(Box::new(Tree::new(3, None, None))));
-/// let s = format!("{}", t2);
+/// //let mut t = Tree::new(1, None, None);
+/// //let t2 = Tree::new(2, Some(Box::new(t)), Some(Box::new(Tree::new(3, None, None))));
+/// //let s = format!("{}", t2);
 ///
-/// assert_eq!(s, "(2: (1: _|_)|(3: _|_))");
-/// t.left = Some(Box::new(Tree::new(4, None, None)));
-/// assert_eq!(Tree::fmt_node(t.left), 4);
-/// assert_eq!(Tree::from_str(s), t2);
+/// //assert_eq!(s, "(2: (1: _|_)|(3: _|_))");
+/// //t.left = Some(Box::new(Tree::new(4, None, None)));
+/// //assert_eq!(Tree::fmt_node(t.left), 4);
+/// //assert_eq!(Tree::from_str(s), t2);
 /// ```
 ///
 /// Additionally the `btree!` macro can be used to conveniently initialize trees:
 ///
 /// ```
-/// let t1 = btree!(1,btree!(2),btree!(3))
-/// assert_eq!(format!("{}", t1), "(1: (2: _|_)|(3: _|_)")
+/// //let t1 = btree!(1,btree!(2),btree!(3))
+/// //assert_eq!(format!("{}", t1), "(1: (2: _|_)|(3: _|_)")
 /// ```
 #[derive(Default, Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct Tree<T> {
@@ -60,18 +61,25 @@ pub struct Tree<T> {
 /// value of the root node, and the other two being child nodes. The last two arguments are
 /// optional.
 ///
-/// ```
-/// // A tree with two child nodes.
-/// let t = btree!(1, Some(btree!(2)), Some(btree!(3)));
-///
-/// // A tree with only a left node.
-/// let t_left = btree!(1, Some(btree!(2)),);
-///
-/// // A tree with only a right node.
-/// let t_right = btree!(1, ,Some(btree!(3)));
-///
-/// // A tree with no children nodes.
-/// let t_single = btree!(1)
+/// ```no_run
+/// //#[macro_use]
+/// //extern crate gemla;
+/// //
+/// //use gemla::*;
+/// //
+/// //fn main() {
+/// //    // A tree with two child nodes.
+/// //    let t = btree!(1, Some(btree!(2)), Some(btree!(3)));
+/// //
+/// //    // A tree with only a left node.
+/// //    let t_left = btree!(1, Some(btree!(2)),);
+/// //
+/// //    // A tree with only a right node.
+/// //    let t_right = btree!(1, ,Some(btree!(3)));
+/// //
+/// //    // A tree with no children nodes.
+/// //    let t_single = btree!(1);
+/// //}
 /// ```
 #[macro_export]
 macro_rules! btree {
@@ -125,5 +133,47 @@ where
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+    }
+}
+
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        assert_eq!(
+            Tree::new(30, None, Some(Box::new(Tree::new(20, None, None)))),
+            Tree {
+                val: 30,
+                left: None,
+                right: Some(Box::new(Tree {
+                    val: 20,
+                    left: None,
+                    right: None,
+                })),
+            }
+        );
+    }
+
+    #[test]
+    fn test_fmt() {
+        assert_eq!(
+            format!("{}", btree!("foo", btree!("bar"),),),
+            "{\"val\":\"foo\",\"left\":{\"val\":\"bar\",\"left\":null,\"right\":null},\"right\":null}"
+        );
+    }
+
+    #[test]
+    fn test_fmt_node() {
+        let t = btree!(17, btree!(16), btree!(12));
+        assert_eq!(Tree::fmt_node(&t.left), "16");
+        assert_eq!(
+            Tree::fmt_node(&Some(Box::new(btree!(btree!("foo"))))),
+            "{\"val\":\"foo\",\"left\":null,\"right\":null}"
+        );
+        assert_eq!(Tree::<i32>::fmt_node(&None), "_");
     }
 }

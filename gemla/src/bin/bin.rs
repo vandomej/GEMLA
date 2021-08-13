@@ -1,15 +1,6 @@
 #[macro_use]
 extern crate clap;
-extern crate regex;
-
-#[macro_use]
-pub mod tree;
-pub mod bracket;
-pub mod constants;
-pub mod file_linked;
-
-#[cfg(test)]
-mod tests;
+extern crate gemla;
 
 use clap::App;
 use std::fs::metadata;
@@ -21,11 +12,11 @@ use std::fs::metadata;
 fn main() {
     // Command line arguments are parsed with the clap crate. And this program uses
     // the yaml method with clap.
-    let yaml = load_yaml!("../cli.yml");
+    let yaml = load_yaml!("../../cli.yml");
     let matches = App::from_yaml(yaml).get_matches();
 
     // Checking that the first argument <DIRECTORY> is a valid directory
-    let directory = matches.value_of(constants::args::DIRECTORY).unwrap();
+    let directory = matches.value_of(gemla::constants::args::DIRECTORY).unwrap();
     let metadata = metadata(directory);
     match &metadata {
         Ok(m) if m.is_dir() => {
