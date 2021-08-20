@@ -68,8 +68,7 @@ pub trait GeneticNode {
     /// }
     ///    
     /// struct Node {
-    ///     pub fit_score: f64,
-    ///     pub model: Model,
+    ///     pub model: Vec<Model>,
     ///     //...
     /// }
     ///
@@ -120,6 +119,52 @@ pub trait GeneticNode {
 
     /// Returns a fit score associated with the nodes performance.
     /// This will be used by a bracket in order to determine the most successful child.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// #
+    /// struct Model {
+    ///     pub fit_score: f64,
+    ///     //...
+    /// }
+    ///
+    /// impl GeneticNode for Model {
+    /// #    fn initialize() -> Result<Box<Self>, String> {
+    /// #        Ok(Box::new(Model {fit_score: 0.0, model: Model {fit_score: 0.0}}))
+    /// #    }
+    /// 
+    ///     //...
+    /// 
+    /// #   fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #       self.model.fit(iterations)?;
+    /// #       self.fit_score = self.model.fit_score;
+    /// #       Ok(())
+    /// #   }
+    /// #
+    /// #
+    ///    fn get_fit_score(&self) -> f64 {
+    ///        self.fit_score
+    ///    }
+    /// 
+    ///     //...
+    /// #
+    /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #       Ok(())
+    /// #   }
+    /// #
+    /// #   fn mutate(&mut self) -> Result<(), String> {
+    /// #       Ok(())
+    /// #   }
+    /// }
+    /// 
+    /// # fn main() -> Result<(), String> {
+    /// let mut model = Model::initialize()?;
+    ///  assert_eq!(node.get_fit_score(), 0.0);
+    /// # Ok(())
+    /// # }
+    /// ``` 
     fn get_fit_score(&self) -> f64;
 
     /// Used when scoring the nodes after simulating and should remove underperforming children.
