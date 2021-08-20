@@ -1,11 +1,11 @@
 //! An enum used to control the state of a [`GeneticNode`]
-//! 
+//!
 //! [`GeneticNode`]: crate::bracket::genetic_node
 
 use serde::{Deserialize, Serialize};
 
 /// An enum used to control the state of a [`GeneticNode`]
-/// 
+///
 /// [`GeneticNode`]: crate::bracket::genetic_node
 #[derive(Clone, Debug, Serialize, Deserialize, Copy)]
 #[serde(tag = "enumType", content = "enumContent")]

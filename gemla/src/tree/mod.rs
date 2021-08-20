@@ -23,7 +23,6 @@
 //! //# }
 //! ```
 
-
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -136,10 +135,8 @@ where
     }
 }
 
-
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
 
     #[test]

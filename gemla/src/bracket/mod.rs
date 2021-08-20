@@ -124,10 +124,9 @@ where
 }
 
 #[cfg(test)]
-mod tests
-{
+mod tests {
     use super::*;
-
+    
     use serde::{Deserialize, Serialize};
     use std::fmt;
     use std::str::FromStr;
@@ -237,5 +236,4 @@ mod tests
 
         std::fs::remove_file("./temp2").expect("Unable to remove file");
     }
-
 }
