@@ -25,6 +25,7 @@
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::cmp::max;
 use std::fmt;
 use std::str::FromStr;
 
@@ -102,6 +103,15 @@ impl<T> Tree<T> {
         Tree { val, left, right }
     }
 
+    pub fn height(&self) -> u64 {
+        match (self.left.as_ref(), self.right.as_ref()) {
+            (Some(l), Some(r)) => max(l.height(), r.height()) + 1,
+            (Some(l), None) => l.height() + 1,
+            (None, Some(r)) => r.height() + 1,
+            _ => 1,
+        }
+    }
+
     pub fn fmt_node(t: &Option<Box<Tree<T>>>) -> String
     where
         T: fmt::Display,
@@ -161,6 +171,13 @@ mod tests {
             format!("{}", btree!("foo", btree!("bar"),),),
             "{\"val\":\"foo\",\"left\":{\"val\":\"bar\",\"left\":null,\"right\":null},\"right\":null}"
         );
+    }
+
+    #[test]
+    fn test_height() {
+        assert_eq!(1, btree!(1).height());
+
+        assert_eq!(3, btree!(1, btree!(2), btree!(2, btree!(3),)).height());
     }
 
     #[test]
