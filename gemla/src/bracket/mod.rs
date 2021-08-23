@@ -154,6 +154,7 @@ where
     /// # Examples
     /// ```
     /// # use gemla::bracket::*;
+    /// # use gemla::btree;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::str::FromStr;
@@ -164,13 +165,13 @@ where
     ///   pub score: f64,
     /// }
     ///
-    /// impl FromStr for TestState {
-    ///   type Err = String;
-    ///
-    ///   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-    ///       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
-    ///   }
-    /// }
+    /// # impl FromStr for TestState {
+    /// #   type Err = String;
+    /// #
+    /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
+    /// #       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+    /// #   }
+    /// # }
     /// #
     /// # impl fmt::Display for TestState {
     /// #     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -205,6 +206,8 @@ where
     ///     fn initialize() -> Result<Box<Self>, String> {
     ///         Ok(Box::new(TestState { score: 0.0 }))
     ///     }
+    /// 
+    ///     //...
     /// }
     ///
     /// # fn main() {
@@ -230,11 +233,83 @@ where
         )
     }
 
+    /// Given a bracket object, configures it's [`IterationScaling`].
+    /// 
+    /// # Examples
+    /// ```
+    /// # use gemla::bracket::*;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::fmt;
+    /// # use std::str::FromStr;
+    /// # use std::string::ToString;
+    /// #
+    /// # #[derive(Default, Deserialize, Serialize, Clone)]
+    /// # struct TestState {
+    /// #   pub score: f64,
+    /// # }
+    /// #
+    /// # impl FromStr for TestState {
+    /// #   type Err = String;
+    /// #
+    /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
+    /// #       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+    /// #   }
+    /// # }
+    /// #
+    /// # impl fmt::Display for TestState {
+    /// #     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    /// #         write!(f, "{}", self.score)
+    /// #     }
+    /// # }
+    /// #
+    /// # impl TestState {
+    /// #     fn new(score: f64) -> TestState {
+    /// #         TestState { score: score }
+    /// #     }
+    /// # }
+    /// #
+    /// # impl genetic_node::GeneticNode for TestState {
+    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #         self.score += iterations as f64;
+    /// #         Ok(())
+    /// #     }
+    /// #
+    /// #     fn get_fit_score(&self) -> f64 {
+    /// #         self.score
+    /// #     }
+    /// #
+    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #         Ok(())
+    /// #     }
+    /// #
+    /// #     fn mutate(&mut self) -> Result<(), String> {
+    /// #         Ok(())
+    /// #     }
+    /// #
+    /// #     fn initialize() -> Result<Box<Self>, String> {
+    /// #         Ok(Box::new(TestState { score: 0.0 }))
+    /// #     }
+    /// # }
+    /// #
+    /// # fn main() {
+    /// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
+    /// .expect("Bracket failed to initialize");
+    ///
+    /// // Constant iteration scaling ensures that every node is simulated 5 times.
+    /// bracket
+    ///     .mutate(|b| drop(b.iteration_scaling(IterationScaling::Constant(5))))
+    ///     .expect("Failed to set iteration scaling");
+    ///
+    /// # std::fs::remove_file("./temp").expect("Unable to remove file");
+    /// # }
+    /// ```
     pub fn iteration_scaling(&mut self, iteration_scaling: IterationScaling) -> &mut Self {
         self.iteration_scaling = iteration_scaling;
         self
     }
 
+    /// Creates a balanced tree with the given `height` that will be used as a branch of the primary tree.
+    /// This additionally simulates and evaluates nodes in the branch as it is built.
     pub fn create_new_branch(&self, height: u64) -> Result<tree::Tree<T>, String> {
         if height == 1 {
             let mut base_node = btree!(*T::initialize()?);
@@ -263,6 +338,11 @@ where
         }
     }
 
+    /// Runs one step of simulation on the current bracket which includes:
+    /// 1) Creating a new branch of the same height and performing the same steps for each subtree.
+    /// 2) Simulating the top node of the current branch.
+    /// 3) Comparing the top node of the current branch to the top node of the new branch.
+    /// 4) Takes the best performing node and makes it the root of the tree. 
     pub fn run_simulation_step(&mut self) -> Result<&mut Self, String> {
         let new_branch = self.create_new_branch(self.tree.height())?;
 
