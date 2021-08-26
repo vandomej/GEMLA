@@ -33,7 +33,7 @@ use std::string::ToString;
 /// #   type Err = String;
 /// #
 /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-/// #       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+/// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
 /// #   }
 /// # }
 /// #
@@ -150,7 +150,7 @@ where
         + Clone,
 {
     /// Initializes a bracket of type `T` storing the contents to `file_path`
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use gemla::bracket::*;
@@ -169,7 +169,7 @@ where
     /// #   type Err = String;
     /// #
     /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-    /// #       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+    /// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
     /// #   }
     /// # }
     /// #
@@ -206,17 +206,17 @@ where
     ///     fn initialize() -> Result<Box<Self>, String> {
     ///         Ok(Box::new(TestState { score: 0.0 }))
     ///     }
-    /// 
+    ///
     ///     //...
     /// }
     ///
     /// # fn main() {
     /// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
     /// .expect("Bracket failed to initialize");
-    /// 
+    ///
     /// assert_eq!(
     ///    format!("{}", bracket),
-    ///    format!("{{\"tree\":{},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}", 
+    ///    format!("{{\"tree\":{},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}",
     ///    btree!(TestState::new(0.0)))
     /// );
     ///
@@ -234,7 +234,7 @@ where
     }
 
     /// Given a bracket object, configures it's [`IterationScaling`].
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use gemla::bracket::*;
@@ -252,7 +252,7 @@ where
     /// #   type Err = String;
     /// #
     /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-    /// #       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+    /// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
     /// #   }
     /// # }
     /// #
@@ -342,8 +342,8 @@ where
     /// 1) Creating a new branch of the same height and performing the same steps for each subtree.
     /// 2) Simulating the top node of the current branch.
     /// 3) Comparing the top node of the current branch to the top node of the new branch.
-    /// 4) Takes the best performing node and makes it the root of the tree. 
-    /// 
+    /// 4) Takes the best performing node and makes it the root of the tree.
+    ///
     /// # Examples
     /// ```
     /// # use gemla::bracket::*;
@@ -361,7 +361,7 @@ where
     /// #   type Err = String;
     /// #
     /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-    /// #       toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+    /// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
     /// #   }
     /// # }
     /// #
@@ -403,16 +403,16 @@ where
     /// # fn main() {
     /// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
     ///     .expect("Bracket failed to initialize");
-    /// 
+    ///
     /// // Running simulations 3 times
     /// for _ in 0..3 {
     ///     bracket
     ///         .mutate(|b| drop(b.run_simulation_step()))
     ///         .expect("Failed to run step");
     /// }
-    /// 
+    ///
     /// assert_eq!(bracket.readonly().tree.height(), 4);
-    /// 
+    ///
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
@@ -454,7 +454,7 @@ mod tests {
         type Err = String;
 
         fn from_str(s: &str) -> Result<TestState, Self::Err> {
-            toml::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
+            serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
         }
     }
 

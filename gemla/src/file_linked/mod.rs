@@ -1,3 +1,5 @@
+//! A wrapper around an object that ties it to a physical file
+
 use std::fmt;
 use std::fs;
 use std::io::Read;
@@ -6,21 +8,64 @@ use std::str::FromStr;
 use std::string::String;
 use std::string::ToString;
 
-pub struct FileLinked<T> {
+/// A wrapper around an object `T` that ties the object to a physical file
+pub struct FileLinked<T>
+where
+    T: ToString,
+{
     val: T,
     path: String,
-}
-
-impl<T> FileLinked<T> {
-    pub fn readonly(&self) -> &T {
-        &self.val
-    }
 }
 
 impl<T> FileLinked<T>
 where
     T: ToString,
 {
+    /// Returns a readonly reference of `T`
+    ///
+    /// # Examples
+    /// ```
+    /// # use gemla::file_linked::*;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::fmt;
+    /// # use std::string::ToString;
+    /// #
+    /// #[derive(Deserialize, Serialize)]
+    /// struct Test {
+    ///     pub a: u32,
+    ///     pub b: String,
+    ///     pub c: f64
+    /// }
+    ///
+    /// impl ToString for Test {
+    ///     fn to_string(&self) -> String {
+    ///         serde_json::to_string(self)
+    ///             .expect("unable to deserialize")
+    ///     }
+    /// }
+    ///
+    /// # fn main() {
+    /// let test = Test {
+    ///     a: 1,
+    ///     b: String::from("two"),
+    ///     c: 3.0
+    /// };
+    ///
+    /// let linked_test = FileLinked::new(test, String::from("./temp"))
+    ///     .expect("Unable to create file linked object");
+    ///
+    /// assert_eq!(linked_test.readonly().a, 1);
+    /// assert_eq!(linked_test.readonly().b, String::from("two"));
+    /// assert_eq!(linked_test.readonly().c, 3.0);
+    /// #
+    /// # std::fs::remove_file("./temp").expect("Unable to remove file");
+    /// # }
+    /// ```
+    pub fn readonly(&self) -> &T {
+        &self.val
+    }
+
+    /// Creates a new [`FileLinked`] object of type `T` stored to the file given by `path`.
     pub fn new(val: T, path: String) -> Result<FileLinked<T>, String> {
         let result = FileLinked { val, path };
 
@@ -98,7 +143,10 @@ where
     }
 }
 
-impl<T: fmt::Display> fmt::Display for FileLinked<T> {
+impl<T: fmt::Display> fmt::Display for FileLinked<T>
+where
+    T: ToString,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.val)
     }
