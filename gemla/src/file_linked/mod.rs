@@ -30,6 +30,50 @@ where
     /// # use std::fmt;
     /// # use std::string::ToString;
     /// #
+    /// # #[derive(Deserialize, Serialize)]
+    /// # struct Test {
+    /// #     pub a: u32,
+    /// #     pub b: String,
+    /// #     pub c: f64
+    /// # }
+    /// #
+    /// # impl ToString for Test {
+    /// #     fn to_string(&self) -> String {
+    /// #         serde_json::to_string(self)
+    /// #             .expect("unable to deserialize")
+    /// #     }
+    /// # }
+    /// #
+    /// # fn main() {
+    /// let test = Test {
+    ///     a: 1,
+    ///     b: String::from("two"),
+    ///     c: 3.0
+    /// };
+    ///
+    /// let linked_test = FileLinked::new(test, String::from("./temp"))
+    ///     .expect("Unable to create file linked object");
+    ///
+    /// assert_eq!(linked_test.readonly().a, 1);
+    /// assert_eq!(linked_test.readonly().b, String::from("two"));
+    /// assert_eq!(linked_test.readonly().c, 3.0);
+    /// #
+    /// # std::fs::remove_file("./temp").expect("Unable to remove file");
+    /// # }
+    /// ```
+    pub fn readonly(&self) -> &T {
+        &self.val
+    }
+
+    /// Creates a new [`FileLinked`] object of type `T` stored to the file given by `path`.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use gemla::file_linked::*;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::fmt;
+    /// # use std::string::ToString;
+    /// #
     /// #[derive(Deserialize, Serialize)]
     /// struct Test {
     ///     pub a: u32,
@@ -61,11 +105,6 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn readonly(&self) -> &T {
-        &self.val
-    }
-
-    /// Creates a new [`FileLinked`] object of type `T` stored to the file given by `path`.
     pub fn new(val: T, path: String) -> Result<FileLinked<T>, String> {
         let result = FileLinked { val, path };
 
@@ -88,6 +127,51 @@ where
         Ok(())
     }
 
+    /// Modifies the data contained in a `FileLinked` object using a callback `op` that has a mutable reference to the 
+    /// underlying data. After the mutable operation is performed the data is written to a file to synchronize the state.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use gemla::file_linked::*;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::fmt;
+    /// # use std::string::ToString;
+    /// #
+    /// # #[derive(Deserialize, Serialize)]
+    /// # struct Test {
+    /// #     pub a: u32,
+    /// #     pub b: String,
+    /// #     pub c: f64
+    /// # }
+    /// # 
+    /// # impl ToString for Test {
+    /// #     fn to_string(&self) -> String {
+    /// #         serde_json::to_string(self)
+    /// #             .expect("unable to deserialize")
+    /// #     }
+    /// # }
+    /// #
+    /// # fn main() -> Result<(), String> {
+    /// let test = Test {
+    ///     a: 1,
+    ///     b: String::from(""),
+    ///     c: 0.0
+    /// };
+    ///
+    /// let mut linked_test = FileLinked::new(test, String::from("./temp"))
+    ///     .expect("Unable to create file linked object");
+    ///
+    /// assert_eq!(linked_test.readonly().a, 1);
+    /// 
+    /// linked_test.mutate(|t| t.a = 2)?;
+    /// 
+    /// assert_eq!(linked_test.readonly().a, 2);
+    /// #
+    /// # std::fs::remove_file("./temp").expect("Unable to remove file");
+    /// #
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn mutate<U, F: FnOnce(&mut T) -> U>(&mut self, op: F) -> Result<U, String> {
         let result = op(&mut self.val);
 
@@ -96,6 +180,54 @@ where
         Ok(result)
     }
 
+    /// Replaces the value held by the `FileLinked` object with `val`. After replacing the object will be written to a file.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use gemla::file_linked::*;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::fmt;
+    /// # use std::string::ToString;
+    /// #
+    /// # #[derive(Deserialize, Serialize)]
+    /// # struct Test {
+    /// #     pub a: u32,
+    /// #     pub b: String,
+    /// #     pub c: f64
+    /// # }
+    /// #
+    /// # impl ToString for Test {
+    /// #     fn to_string(&self) -> String {
+    /// #         serde_json::to_string(self)
+    /// #             .expect("unable to deserialize")
+    /// #     }
+    /// # }
+    /// #
+    /// # fn main() -> Result<(), String> {
+    /// let test = Test {
+    ///     a: 1,
+    ///     b: String::from(""),
+    ///     c: 0.0
+    /// };
+    ///
+    /// let mut linked_test = FileLinked::new(test, String::from("./temp"))
+    ///     .expect("Unable to create file linked object");
+    ///
+    /// assert_eq!(linked_test.readonly().a, 1);
+    /// 
+    /// linked_test.replace(Test {
+    ///     a: 2,
+    ///     b: String::from(""),
+    ///     c: 0.0
+    /// })?;
+    /// 
+    /// assert_eq!(linked_test.readonly().a, 2);
+    /// #
+    /// # std::fs::remove_file("./temp").expect("Unable to remove file");
+    /// #
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn replace(&mut self, val: T) -> Result<(), String> {
         self.val = val;
 
