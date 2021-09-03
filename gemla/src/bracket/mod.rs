@@ -3,9 +3,9 @@
 
 pub mod genetic_node;
 
-use super::file_linked::FileLinked;
 use super::tree;
 
+use file_linked::FileLinked;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;

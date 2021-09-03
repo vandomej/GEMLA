@@ -1,17 +1,19 @@
 //! A wrapper around an object that ties it to a physical file
+//! 
+
+extern crate serde;
 
 use std::fmt;
 use std::fs;
-use std::io::Read;
-use std::io::Write;
-use std::str::FromStr;
-use std::string::String;
-use std::string::ToString;
+use std::io::prelude::*;
+
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 /// A wrapper around an object `T` that ties the object to a physical file
 pub struct FileLinked<T>
 where
-    T: ToString,
+    T: Serialize,
 {
     val: T,
     path: String,
@@ -19,13 +21,13 @@ where
 
 impl<T> FileLinked<T>
 where
-    T: ToString,
+    T: Serialize,
 {
     /// Returns a readonly reference of `T`
     ///
     /// # Examples
     /// ```
-    /// # use gemla::file_linked::*;
+    /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -35,13 +37,6 @@ where
     /// #     pub a: u32,
     /// #     pub b: String,
     /// #     pub c: f64
-    /// # }
-    /// #
-    /// # impl ToString for Test {
-    /// #     fn to_string(&self) -> String {
-    /// #         serde_json::to_string(self)
-    /// #             .expect("unable to deserialize")
-    /// #     }
     /// # }
     /// #
     /// # fn main() {
@@ -69,7 +64,7 @@ where
     /// 
     /// # Examples
     /// ```
-    /// # use gemla::file_linked::*;
+    /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -79,13 +74,6 @@ where
     ///     pub a: u32,
     ///     pub b: String,
     ///     pub c: f64
-    /// }
-    ///
-    /// impl ToString for Test {
-    ///     fn to_string(&self) -> String {
-    ///         serde_json::to_string(self)
-    ///             .expect("unable to deserialize")
-    ///     }
     /// }
     ///
     /// # fn main() {
@@ -121,7 +109,7 @@ where
             .open(&self.path)
             .map_err(|_| format!("Unable to open path {}", self.path))?;
 
-        write!(file, "{}", self.val.to_string())
+        write!(file, "{}", serde_json::to_string(&self.val).map_err(|e| e.to_string())?)
             .or_else(|_| Err(String::from("Unable to write to file.")))?;
 
         Ok(())
@@ -132,7 +120,7 @@ where
     /// 
     /// # Examples
     /// ```
-    /// # use gemla::file_linked::*;
+    /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -142,13 +130,6 @@ where
     /// #     pub a: u32,
     /// #     pub b: String,
     /// #     pub c: f64
-    /// # }
-    /// # 
-    /// # impl ToString for Test {
-    /// #     fn to_string(&self) -> String {
-    /// #         serde_json::to_string(self)
-    /// #             .expect("unable to deserialize")
-    /// #     }
     /// # }
     /// #
     /// # fn main() -> Result<(), String> {
@@ -184,7 +165,7 @@ where
     /// 
     /// # Examples
     /// ```
-    /// # use gemla::file_linked::*;
+    /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -194,13 +175,6 @@ where
     /// #     pub a: u32,
     /// #     pub b: String,
     /// #     pub c: f64
-    /// # }
-    /// #
-    /// # impl ToString for Test {
-    /// #     fn to_string(&self) -> String {
-    /// #         serde_json::to_string(self)
-    /// #             .expect("unable to deserialize")
-    /// #     }
     /// # }
     /// #
     /// # fn main() -> Result<(), String> {
@@ -237,7 +211,7 @@ where
 
 impl<T> FileLinked<T>
 where
-    T: ToString + FromStr + Default,
+    T: Serialize + DeserializeOwned + Default,
 {
     pub fn from_file(path: &str) -> Result<FileLinked<T>, String> {
         let meta = fs::metadata(path);
@@ -252,7 +226,7 @@ where
                 file.read_to_string(&mut s)
                     .map_err(|_| String::from("Unable to read from file."))?;
 
-                let val = T::from_str(&s)
+                let val = serde_json::from_str(&s)
                     .map_err(|_| String::from("Unable to parse value from file."))?;
 
                 Ok(FileLinked {
@@ -277,7 +251,7 @@ where
 
 impl<T: fmt::Display> fmt::Display for FileLinked<T>
 where
-    T: ToString,
+    T: Serialize,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.val)
@@ -291,30 +265,28 @@ mod tests {
 
     #[test]
     fn test_mutate() -> Result<(), String> {
-        let tree = btree!(1, btree!(2), btree!(3, btree!(4),));
-        let mut linked_tree = FileLinked::new(tree, String::from("test.txt"))?;
+        let list = vec![1, 2, 3, 4];
+        let mut file_linked_list = FileLinked::new(list, String::from("test.txt"))?;
 
         assert_eq!(
-            format!("{}", linked_tree.readonly()),
-            "{\"val\":1,\"left\":{\"val\":2,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
+            format!("{:?}", file_linked_list.readonly()),
+            "[1, 2, 3, 4]"
         );
 
-        linked_tree.mutate(|v1| v1.val = 10)?;
+        file_linked_list.mutate(|v1| v1.push(5))?;
 
         assert_eq!(
-            format!("{}", linked_tree.readonly()),
-            "{\"val\":10,\"left\":{\"val\":2,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
+            format!("{:?}", file_linked_list.readonly()),
+            "[1, 2, 3, 4, 5]"
         );
 
-        linked_tree.mutate(|v1| {
-            let mut left = v1.left.clone().unwrap();
-            left.val = 13;
-            v1.left = Some(left);
+        file_linked_list.mutate(|v1| {
+            v1[1] = 1
         })?;
 
         assert_eq!(
-            format!("{}", linked_tree.readonly()),
-            "{\"val\":10,\"left\":{\"val\":13,\"left\":null,\"right\":null},\"right\":{\"val\":3,\"left\":{\"val\":4,\"left\":null,\"right\":null},\"right\":null}}"
+            format!("{:?}", file_linked_list.readonly()),
+            "[1, 1, 3, 4, 5]"
         );
 
         fs::remove_file("test.txt").expect("Unable to remove file");
