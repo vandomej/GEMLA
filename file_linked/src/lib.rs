@@ -1,5 +1,4 @@
 //! A wrapper around an object that ties it to a physical file
-//! 
 
 extern crate serde;
 
@@ -213,20 +212,69 @@ impl<T> FileLinked<T>
 where
     T: Serialize + DeserializeOwned + Default,
 {
+    /// Deserializes an object `T` from the file given by `path`
+    /// 
+    /// # Examples
+    /// ```
+    /// # use file_linked::*;
+    /// # use serde::{Deserialize, Serialize};
+    /// # use std::fmt;
+    /// # use std::string::ToString;
+    /// # use std::fs;
+    /// # use std::fs::OpenOptions;
+    /// # use std::io::Write;
+    /// #
+    /// # #[derive(Deserialize, Serialize, Default)]
+    /// # struct Test {
+    /// #     pub a: u32,
+    /// #     pub b: String,
+    /// #     pub c: f64
+    /// # }
+    /// #
+    /// # fn main() -> Result<(), String> {
+    /// let test = Test {
+    ///     a: 1,
+    ///     b: String::from("2"),
+    ///     c: 3.0
+    /// };
+    /// 
+    /// let path = String::from("./temp");
+    /// 
+    /// let mut file = OpenOptions::new()
+    ///        .write(true)
+    ///        .create(true)
+    ///        .open(path.clone())
+    ///        .expect("Unable to create file");
+    /// 
+    /// write!(file, "{}", serde_json::to_string(&test)
+    ///     .expect("Unable to serialize object"))
+    ///     .expect("Unable to write file");
+    /// 
+    /// drop(file);
+    ///
+    /// let mut linked_test = FileLinked::<Test>::from_file(&path)
+    ///     .expect("Unable to create file linked object");
+    ///
+    /// assert_eq!(linked_test.readonly().a, test.a);
+    /// assert_eq!(linked_test.readonly().b, test.b);
+    /// assert_eq!(linked_test.readonly().c, test.c);
+    /// #
+    /// # std::fs::remove_file("./temp").expect("Unable to remove file");
+    /// #
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn from_file(path: &str) -> Result<FileLinked<T>, String> {
         let meta = fs::metadata(path);
 
         match &meta {
             Ok(m) if m.is_file() => {
-                let mut file = fs::OpenOptions::new()
+                let file = fs::OpenOptions::new()
                     .read(true)
                     .open(path)
                     .map_err(|_| format!("Unable to open file {}", path))?;
-                let mut s = String::new();
-                file.read_to_string(&mut s)
-                    .map_err(|_| String::from("Unable to read from file."))?;
 
-                let val = serde_json::from_str(&s)
+                let val = serde_json::from_reader(file)
                     .map_err(|_| String::from("Unable to parse value from file."))?;
 
                 Ok(FileLinked {
