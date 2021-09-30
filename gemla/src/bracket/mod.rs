@@ -10,7 +10,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use std::string::ToString;
 
 /// As the bracket tree increases in height, `IterationScaling` can be used to configure the number of iterations that
 /// a node runs for.
@@ -35,12 +34,6 @@ use std::string::ToString;
 /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
 /// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
 /// #   }
-/// # }
-/// #
-/// # impl fmt::Display for TestState {
-/// #     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-/// #         write!(f, "{}", self.score)
-/// #     }
 /// # }
 /// #
 /// # impl TestState {
@@ -84,7 +77,7 @@ use std::string::ToString;
 /// # std::fs::remove_file("./temp").expect("Unable to remove file");
 /// # }
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize, Copy)]
+#[derive(Clone, Serialize, Deserialize, Copy)]
 #[serde(tag = "enumType", content = "enumContent")]
 pub enum IterationScaling {
     /// Scales the number of simulations linearly with the height of the  bracket tree given by `f(x) = mx` where
@@ -100,7 +93,7 @@ impl Default for IterationScaling {
     }
 }
 
-impl fmt::Display for IterationScaling {
+impl fmt::Debug for IterationScaling {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -116,7 +109,7 @@ impl fmt::Display for IterationScaling {
 /// individuals.
 ///
 /// [`GeneticNode`]: genetic_node::GeneticNode
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Bracket<T>
 where
     T: genetic_node::GeneticNode,
@@ -125,9 +118,10 @@ where
     iteration_scaling: IterationScaling,
 }
 
-impl<T: fmt::Display + Serialize> fmt::Display for Bracket<T>
+impl<T> fmt::Debug for Bracket<T>
 where
-    T: genetic_node::GeneticNode,
+    T: genetic_node::GeneticNode
+        + Serialize
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -141,13 +135,11 @@ where
 impl<T> Bracket<T>
 where
     T: genetic_node::GeneticNode
-        + ToString
-        + FromStr
-        + Default
-        + fmt::Display
-        + DeserializeOwned
-        + Serialize
-        + Clone,
+    + FromStr
+    + Default
+    + DeserializeOwned
+    + Serialize
+    + Clone,
 {
     /// Initializes a bracket of type `T` storing the contents to `file_path`
     ///
@@ -160,7 +152,7 @@ where
     /// # use std::str::FromStr;
     /// # use std::string::ToString;
     /// #
-    /// #[derive(Default, Deserialize, Serialize, Clone)]
+    /// #[derive(Default, Deserialize, Serialize, Debug, Clone)]
     /// struct TestState {
     ///   pub score: f64,
     /// }
@@ -215,9 +207,9 @@ where
     /// .expect("Bracket failed to initialize");
     ///
     /// assert_eq!(
-    ///    format!("{}", bracket),
-    ///    format!("{{\"tree\":{},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}",
-    ///    btree!(TestState::new(0.0)))
+    ///    format!("{:?}", bracket),
+    ///    format!("{{\"tree\":{:?},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}",
+    ///    btree!(TestState{score: 0.0}))
     /// );
     ///
     /// std::fs::remove_file("./temp").expect("Unable to remove file");
@@ -441,11 +433,10 @@ mod tests {
     use super::*;
 
     use serde::{Deserialize, Serialize};
-    use std::fmt;
     use std::str::FromStr;
     use std::string::ToString;
 
-    #[derive(Default, Deserialize, Serialize, Clone)]
+    #[derive(Default, Deserialize, Serialize, Clone, Debug)]
     struct TestState {
         pub score: f64,
     }
@@ -455,18 +446,6 @@ mod tests {
 
         fn from_str(s: &str) -> Result<TestState, Self::Err> {
             serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
-        }
-    }
-
-    impl fmt::Display for TestState {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "{}", self.score)
-        }
-    }
-
-    impl TestState {
-        fn new(score: f64) -> TestState {
-            TestState { score: score }
         }
     }
 
@@ -499,9 +478,9 @@ mod tests {
             .expect("Bracket failed to initialize");
 
         assert_eq!(
-            format!("{}", bracket),
-            format!("{{\"tree\":{},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}", 
-            btree!(TestState::new(0.0)))
+            format!("{:?}", bracket),
+            format!("{{\"tree\":{:?},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}", 
+            btree!(TestState{score: 0.0}))
         );
 
         std::fs::remove_file("./temp").expect("Unable to remove file");
@@ -522,27 +501,27 @@ mod tests {
         }
 
         assert_eq!(
-            format!("{}", bracket),
-            format!("{{\"tree\":{},\"iteration_scaling\":{{\"enumType\":\"Linear\",\"enumContent\":2}}}}", 
+            format!("{:?}", bracket),
+            format!("{{\"tree\":{:?},\"iteration_scaling\":{{\"enumType\":\"Linear\",\"enumContent\":2}}}}", 
             btree!(
-                TestState::new(12.0),
+                TestState{score: 12.0},
                 btree!(
-                    TestState::new(12.0),
-                    btree!(TestState::new(6.0),
-                        btree!(TestState::new(2.0)),
-                        btree!(TestState::new(2.0))),
-                    btree!(TestState::new(6.0),
-                        btree!(TestState::new(2.0)),
-                        btree!(TestState::new(2.0)))
+                    TestState{score: 12.0},
+                    btree!(TestState{score: 6.0},
+                        btree!(TestState{score: 2.0}),
+                        btree!(TestState{score: 2.0})),
+                    btree!(TestState{score: 6.0},
+                        btree!(TestState{score: 2.0}),
+                        btree!(TestState{score: 2.0}))
                 ),
                 btree!(
-                    TestState::new(12.0),
-                    btree!(TestState::new(6.0),
-                        btree!(TestState::new(2.0)),
-                        btree!(TestState::new(2.0))),
-                    btree!(TestState::new(6.0),
-                        btree!(TestState::new(2.0)),
-                        btree!(TestState::new(2.0))))
+                    TestState{score: 12.0},
+                    btree!(TestState{score: 6.0},
+                        btree!(TestState{score: 2.0}),
+                        btree!(TestState{score: 2.0})),
+                    btree!(TestState{score: 6.0},
+                        btree!(TestState{score: 2.0}),
+                        btree!(TestState{score: 2.0})))
                 )
             )
         );

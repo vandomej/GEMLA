@@ -297,12 +297,13 @@ where
     }
 }
 
-impl<T: fmt::Display> fmt::Display for FileLinked<T>
+impl<T> fmt::Debug for FileLinked<T>
 where
-    T: Serialize,
+    T: fmt::Debug 
+        + Serialize,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.val)
+        write!(f, "{:?}", self.val)
     }
 }
 
