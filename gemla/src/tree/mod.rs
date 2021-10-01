@@ -4,14 +4,14 @@
 //!
 //! ```
 //! use gemla::btree;
-//! 
+//!
 //! // Tree with 2 nodes, one root node and one on the left side
 //! let mut t = btree!(1, btree!(2),);
-//! 
+//!
 //! assert_eq!(t.height(), 2);
 //! assert_eq!(t.left.unwrap().val, 2);
 //! assert_eq!(t.right, None);
-//! 
+//!
 //! t.right = Some(Box::new(btree!(3)));
 //! assert_eq!(t.right.unwrap().val, 3);
 //! ```
@@ -28,14 +28,14 @@ use std::str::FromStr;
 ///
 /// ```
 /// use gemla::btree;
-/// 
+///
 /// // Tree with 2 nodes, one root node and one on the left side
 /// let mut t = btree!(1, btree!(2),);
-/// 
+///
 /// assert_eq!(t.height(), 2);
 /// assert_eq!(t.left.unwrap().val, 2);
 /// assert_eq!(t.right, None);
-/// 
+///
 /// t.right = Some(Box::new(btree!(3)));
 /// assert_eq!(t.right.unwrap().val, 3);
 /// ```
@@ -53,34 +53,34 @@ pub struct Tree<T> {
 /// ```
 /// use gemla::tree::*;
 /// use gemla::btree;
-/// 
+///
 /// # fn main() {
 /// // A tree with two child nodes.
 /// let t = btree!(1, btree!(2), btree!(3));
-/// assert_eq!(t, 
-///     Tree::new(1, 
-///         Some(Box::new(Tree::new(2, None, None))), 
+/// assert_eq!(t,
+///     Tree::new(1,
+///         Some(Box::new(Tree::new(2, None, None))),
 ///         Some(Box::new(Tree::new(3, None, None)))));
-/// 
+///
 /// // A tree with only a left node.
 /// let t_left = btree!(1, btree!(2),);
-/// assert_eq!(t_left, 
-///     Tree::new(1, 
-///         Some(Box::new(Tree::new(2, None, None))), 
+/// assert_eq!(t_left,
+///     Tree::new(1,
+///         Some(Box::new(Tree::new(2, None, None))),
 ///         None));
-/// 
+///
 /// // A tree with only a right node.
 /// let t_right = btree!(1, , btree!(3));
-/// assert_eq!(t_right, 
-///     Tree::new(1, 
-///         None, 
+/// assert_eq!(t_right,
+///     Tree::new(1,
+///         None,
 ///         Some(Box::new(Tree::new(3, None, None)))));
-/// 
+///
 /// // A tree with no child nodes.
 /// let t_single = btree!(1);
-/// assert_eq!(t_single, 
-///     Tree::new(1, 
-///         None, 
+/// assert_eq!(t_single,
+///     Tree::new(1,
+///         None,
 ///         None));
 /// # }
 /// ```
@@ -102,12 +102,12 @@ macro_rules! btree {
 
 impl<T> Tree<T> {
     /// Constructs a new [`Tree`] object
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use gemla::tree::*;
-    /// 
+    ///
     /// let t = Tree::new(1, None, None);
     /// assert_eq!(t, Tree {
     ///     val: 1,
@@ -120,16 +120,16 @@ impl<T> Tree<T> {
     }
 
     /// Obtains the height of the longest branch in a [`Tree`]
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use gemla::tree::*;
     /// use gemla::btree;
-    /// 
-    /// let t = 
-    ///     btree!("a", 
-    ///         btree!("aa", 
+    ///
+    /// let t =
+    ///     btree!("a",
+    ///         btree!("aa",
     ///             btree!("aaa"),),
     ///         btree!("ab"));
     /// assert_eq!(t.height(), 3);

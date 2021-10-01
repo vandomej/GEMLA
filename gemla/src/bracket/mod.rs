@@ -9,6 +9,7 @@ use file_linked::FileLinked;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path;
 use std::str::FromStr;
 
 /// As the bracket tree increases in height, `IterationScaling` can be used to configure the number of iterations that
@@ -22,6 +23,7 @@ use std::str::FromStr;
 /// # use std::fmt;
 /// # use std::str::FromStr;
 /// # use std::string::ToString;
+/// # use std::path;
 /// #
 /// # #[derive(Default, Deserialize, Serialize, Clone)]
 /// # struct TestState {
@@ -66,7 +68,7 @@ use std::str::FromStr;
 /// # }
 /// #
 /// # fn main() {
-/// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
+/// let mut bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp"))
 /// .expect("Bracket failed to initialize");
 ///
 /// // Constant iteration scaling ensures that every node is simulated 5 times.
@@ -120,8 +122,7 @@ where
 
 impl<T> fmt::Debug for Bracket<T>
 where
-    T: genetic_node::GeneticNode
-        + Serialize
+    T: genetic_node::GeneticNode + Serialize,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -134,12 +135,7 @@ where
 
 impl<T> Bracket<T>
 where
-    T: genetic_node::GeneticNode
-    + FromStr
-    + Default
-    + DeserializeOwned
-    + Serialize
-    + Clone,
+    T: genetic_node::GeneticNode + FromStr + Default + DeserializeOwned + Serialize + Clone,
 {
     /// Initializes a bracket of type `T` storing the contents to `file_path`
     ///
@@ -151,6 +147,7 @@ where
     /// # use std::fmt;
     /// # use std::str::FromStr;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// #[derive(Default, Deserialize, Serialize, Debug, Clone)]
     /// struct TestState {
@@ -203,7 +200,7 @@ where
     /// }
     ///
     /// # fn main() {
-    /// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
+    /// let mut bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp"))
     /// .expect("Bracket failed to initialize");
     ///
     /// assert_eq!(
@@ -215,7 +212,7 @@ where
     /// std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn initialize(file_path: String) -> Result<FileLinked<Self>, String> {
+    pub fn initialize(file_path: path::PathBuf) -> Result<FileLinked<Self>, String> {
         FileLinked::new(
             Bracket {
                 tree: btree!(*T::initialize()?),
@@ -234,6 +231,7 @@ where
     /// # use std::fmt;
     /// # use std::str::FromStr;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// # #[derive(Default, Deserialize, Serialize, Clone)]
     /// # struct TestState {
@@ -284,7 +282,7 @@ where
     /// # }
     /// #
     /// # fn main() {
-    /// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
+    /// let mut bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp"))
     /// .expect("Bracket failed to initialize");
     ///
     /// // Constant iteration scaling ensures that every node is simulated 5 times.
@@ -343,6 +341,7 @@ where
     /// # use std::fmt;
     /// # use std::str::FromStr;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// # #[derive(Default, Deserialize, Serialize, Clone)]
     /// # struct TestState {
@@ -393,7 +392,7 @@ where
     /// # }
     /// #
     /// # fn main() {
-    /// let mut bracket = Bracket::<TestState>::initialize("./temp".to_string())
+    /// let mut bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp"))
     ///     .expect("Bracket failed to initialize");
     ///
     /// // Running simulations 3 times
@@ -434,7 +433,6 @@ mod tests {
 
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
-    use std::string::ToString;
 
     #[derive(Default, Deserialize, Serialize, Clone, Debug)]
     struct TestState {
@@ -474,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let bracket = Bracket::<TestState>::initialize("./temp".to_string())
+        let bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp"))
             .expect("Bracket failed to initialize");
 
         assert_eq!(
@@ -488,7 +486,7 @@ mod tests {
 
     #[test]
     fn test_run() {
-        let mut bracket = Bracket::<TestState>::initialize("./temp2".to_string())
+        let mut bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp2"))
             .expect("Bracket failed to initialize");
 
         bracket

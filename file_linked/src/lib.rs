@@ -5,6 +5,7 @@ extern crate serde;
 use std::fmt;
 use std::fs;
 use std::io::prelude::*;
+use std::path;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -15,7 +16,7 @@ where
     T: Serialize,
 {
     val: T,
-    path: String,
+    path: path::PathBuf,
 }
 
 impl<T> FileLinked<T>
@@ -30,6 +31,7 @@ where
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -45,7 +47,7 @@ where
     ///     c: 3.0
     /// };
     ///
-    /// let linked_test = FileLinked::new(test, String::from("./temp"))
+    /// let linked_test = FileLinked::new(test, path::PathBuf::from("./temp"))
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
@@ -60,13 +62,14 @@ where
     }
 
     /// Creates a new [`FileLinked`] object of type `T` stored to the file given by `path`.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// #[derive(Deserialize, Serialize)]
     /// struct Test {
@@ -82,7 +85,7 @@ where
     ///     c: 3.0
     /// };
     ///
-    /// let linked_test = FileLinked::new(test, String::from("./temp"))
+    /// let linked_test = FileLinked::new(test, path::PathBuf::from("./temp"))
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
@@ -92,7 +95,11 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn new(val: T, path: String) -> Result<FileLinked<T>, String> {
+    pub fn new(val: T, path: path::PathBuf) -> Result<FileLinked<T>, String> {
+        if path.is_file() {
+            return Err(format!("{} is not a valid file path", path.display()));
+        }
+
         let result = FileLinked { val, path };
 
         result.write_data()?;
@@ -106,23 +113,28 @@ where
             .create(true)
             .truncate(true)
             .open(&self.path)
-            .map_err(|_| format!("Unable to open path {}", self.path))?;
+            .map_err(|_| format!("Unable to open path {}", self.path.display()))?;
 
-        write!(file, "{}", serde_json::to_string(&self.val).map_err(|e| e.to_string())?)
-            .or_else(|_| Err(String::from("Unable to write to file.")))?;
+        write!(
+            file,
+            "{}",
+            serde_json::to_string(&self.val).map_err(|e| e.to_string())?
+        )
+        .or_else(|_| Err(String::from("Unable to write to file.")))?;
 
         Ok(())
     }
 
-    /// Modifies the data contained in a `FileLinked` object using a callback `op` that has a mutable reference to the 
+    /// Modifies the data contained in a `FileLinked` object using a callback `op` that has a mutable reference to the
     /// underlying data. After the mutable operation is performed the data is written to a file to synchronize the state.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -138,13 +150,13 @@ where
     ///     c: 0.0
     /// };
     ///
-    /// let mut linked_test = FileLinked::new(test, String::from("./temp"))
+    /// let mut linked_test = FileLinked::new(test, path::PathBuf::from("./temp"))
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
-    /// 
+    ///
     /// linked_test.mutate(|t| t.a = 2)?;
-    /// 
+    ///
     /// assert_eq!(linked_test.readonly().a, 2);
     /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
@@ -161,13 +173,14 @@ where
     }
 
     /// Replaces the value held by the `FileLinked` object with `val`. After replacing the object will be written to a file.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use file_linked::*;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
+    /// # use std::path;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -183,17 +196,17 @@ where
     ///     c: 0.0
     /// };
     ///
-    /// let mut linked_test = FileLinked::new(test, String::from("./temp"))
+    /// let mut linked_test = FileLinked::new(test, path::PathBuf::from("./temp"))
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
-    /// 
+    ///
     /// linked_test.replace(Test {
     ///     a: 2,
     ///     b: String::from(""),
     ///     c: 0.0
     /// })?;
-    /// 
+    ///
     /// assert_eq!(linked_test.readonly().a, 2);
     /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
@@ -210,10 +223,10 @@ where
 
 impl<T> FileLinked<T>
 where
-    T: Serialize + DeserializeOwned + Default,
+    T: Serialize + DeserializeOwned,
 {
     /// Deserializes an object `T` from the file given by `path`
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use file_linked::*;
@@ -223,8 +236,9 @@ where
     /// # use std::fs;
     /// # use std::fs::OpenOptions;
     /// # use std::io::Write;
+    /// # use std::path;
     /// #
-    /// # #[derive(Deserialize, Serialize, Default)]
+    /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
     /// #     pub a: u32,
     /// #     pub b: String,
@@ -237,22 +251,22 @@ where
     ///     b: String::from("2"),
     ///     c: 3.0
     /// };
-    /// 
-    /// let path = String::from("./temp");
-    /// 
+    ///
+    /// let path = path::PathBuf::from("./temp");
+    ///
     /// let mut file = OpenOptions::new()
     ///        .write(true)
     ///        .create(true)
     ///        .open(path.clone())
     ///        .expect("Unable to create file");
-    /// 
+    ///
     /// write!(file, "{}", serde_json::to_string(&test)
     ///     .expect("Unable to serialize object"))
     ///     .expect("Unable to write file");
-    /// 
+    ///
     /// drop(file);
     ///
-    /// let mut linked_test = FileLinked::<Test>::from_file(&path)
+    /// let mut linked_test = FileLinked::<Test>::from_file(path)
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, test.a);
@@ -264,43 +278,30 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_file(path: &str) -> Result<FileLinked<T>, String> {
-        let meta = fs::metadata(path);
+    pub fn from_file(path: path::PathBuf) -> Result<FileLinked<T>, String> {
+        let meta = fs::metadata(&path);
 
         match &meta {
-            Ok(m) if m.is_file() => {
+            Ok(m) if m.is_file() && path.is_file()=> {
                 let file = fs::OpenOptions::new()
                     .read(true)
-                    .open(path)
-                    .map_err(|_| format!("Unable to open file {}", path))?;
+                    .open(&path)
+                    .map_err(|_| format!("Unable to open file {}", path.display()))?;
 
                 let val = serde_json::from_reader(file)
                     .map_err(|_| String::from("Unable to parse value from file."))?;
 
-                Ok(FileLinked {
-                    val,
-                    path: String::from(path),
-                })
+                Ok(FileLinked { val, path })
             }
-            Ok(_) => Err(format!("{} is not a file.", path)),
-            _ => {
-                let result = FileLinked {
-                    val: T::default(),
-                    path: String::from(path),
-                };
-
-                result.write_data()?;
-
-                Ok(result)
-            }
+            Ok(_) => Err(format!("{} is not a file.", path.display())),
+            _ => Err(format!("Error parsing file path {}", path.display())),
         }
     }
 }
 
 impl<T> fmt::Debug for FileLinked<T>
 where
-    T: fmt::Debug 
-        + Serialize,
+    T: fmt::Debug + Serialize,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.val)
@@ -315,12 +316,9 @@ mod tests {
     #[test]
     fn test_mutate() -> Result<(), String> {
         let list = vec![1, 2, 3, 4];
-        let mut file_linked_list = FileLinked::new(list, String::from("test.txt"))?;
+        let mut file_linked_list = FileLinked::new(list, path::PathBuf::from("test.txt"))?;
 
-        assert_eq!(
-            format!("{:?}", file_linked_list.readonly()),
-            "[1, 2, 3, 4]"
-        );
+        assert_eq!(format!("{:?}", file_linked_list.readonly()), "[1, 2, 3, 4]");
 
         file_linked_list.mutate(|v1| v1.push(5))?;
 
@@ -329,9 +327,7 @@ mod tests {
             "[1, 2, 3, 4, 5]"
         );
 
-        file_linked_list.mutate(|v1| {
-            v1[1] = 1
-        })?;
+        file_linked_list.mutate(|v1| v1[1] = 1)?;
 
         assert_eq!(
             format!("{:?}", file_linked_list.readonly()),
