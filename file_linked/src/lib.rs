@@ -257,7 +257,7 @@ where
     /// let mut file = OpenOptions::new()
     ///        .write(true)
     ///        .create(true)
-    ///        .open(path.clone())
+    ///        .open(&path)
     ///        .expect("Unable to create file");
     ///
     /// write!(file, "{}", serde_json::to_string(&test)
@@ -279,22 +279,26 @@ where
     /// # }
     /// ```
     pub fn from_file(path: path::PathBuf) -> Result<FileLinked<T>, String> {
-        let meta = fs::metadata(&path);
+        if !path.is_file() {
+            return Err(format!("{} is not a valid file path", path.display()));
+        }
 
-        match &meta {
-            Ok(m) if m.is_file() && path.is_file()=> {
-                let file = fs::OpenOptions::new()
-                    .read(true)
-                    .open(&path)
-                    .map_err(|_| format!("Unable to open file {}", path.display()))?;
+        let metadata = path
+            .metadata()
+            .map_err(|_| format!("Error obtaining metadata for {}", path.display()))?;
 
-                let val = serde_json::from_reader(file)
-                    .map_err(|_| String::from("Unable to parse value from file."))?;
+        if metadata.is_file() {
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .open(&path)
+                .map_err(|_| format!("Unable to open file {}", path.display()))?;
 
-                Ok(FileLinked { val, path })
-            }
-            Ok(_) => Err(format!("{} is not a file.", path.display())),
-            _ => Err(format!("Error parsing file path {}", path.display())),
+            let val = serde_json::from_reader(file)
+                .map_err(|_| String::from("Unable to parse value from file."))?;
+
+            Ok(FileLinked { val, path })
+        } else {
+            Err(format!("{} is not a file.", path.display()))
         }
     }
 }
