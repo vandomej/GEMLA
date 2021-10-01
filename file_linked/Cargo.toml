@@ -3,7 +3,6 @@ name = "file_linked"
 version = "0.1.0"
 authors = ["vandomej <jacob.vandome15@gmail.com>"]
 edition = "2018"
-license = "MIT"
 license-file = "../LICENSE"
 description = "Controlling objects linked directly to a file"
 homepage = "https://github.com/vandomej/GEMLA/tree/master/file_linked"
