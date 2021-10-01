@@ -8,7 +8,7 @@ description = "Controlling objects linked directly to a file"
 homepage = "https://github.com/vandomej/GEMLA/tree/master/file_linked"
 repository = "https://github.com/vandomej/GEMLA/tree/master/file_linked"
 readme = "README.md"
-keywords = ["file", "linked", "serialize", "deserialize", "data", "storage"]
+keywords = ["file", "linked", "data", "storage"]
 categories = ["filesystem", "data-structures"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

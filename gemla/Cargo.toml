@@ -8,7 +8,7 @@ description = "Using evolutionary computation to generate machine learning algor
 homepage = "https://github.com/vandomej/GEMLA"
 repository = "https://github.com/vandomej/GEMLA"
 readme = "../README.md"
-keywords = ["genetic", "evolution", "evolved", "machine", "learning", "algorithm", "neural", "network"]
+keywords = ["genetic", "evolve", "machine", "learning", "algorithm"]
 categories = ["simulation"]
 
 [dependencies]
