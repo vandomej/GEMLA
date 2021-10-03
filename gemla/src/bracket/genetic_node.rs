@@ -2,6 +2,9 @@
 //!
 //! [`Bracket`]: crate::bracket::Bracket
 
+use crate::error::Error;
+
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -33,19 +36,20 @@ pub trait GeneticNode {
     ///
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// # use gemla::error::Error;
     /// #
     /// struct Node {
     ///     pub fit_score: f64,
     /// }
     ///
     /// impl GeneticNode for Node {
-    ///     fn initialize() -> Result<Box<Self>, String> {
+    ///     fn initialize() -> Result<Box<Self>, Error> {
     ///         Ok(Box::new(Node {fit_score: 0.0}))
     ///     }
     ///
     ///     //...
     /// #
-    /// #   fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #   fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
     /// #
@@ -53,22 +57,22 @@ pub trait GeneticNode {
     /// #       self.fit_score
     /// #   }
     /// #
-    /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
     /// #
-    /// #   fn mutate(&mut self) -> Result<(), String> {
+    /// #   fn mutate(&mut self) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
     /// }
     ///
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let node = Node::initialize()?;
     /// assert_eq!(node.get_fit_score(), 0.0);
     /// # Ok(())
     /// # }
     /// ```
-    fn initialize() -> Result<Box<Self>, String>;
+    fn initialize() -> Result<Box<Self>, Error>;
 
     /// Runs a simulation on the state object for the given number of `iterations` in order to guage it's fitness.
     /// This will be called for every node in a bracket before evaluating it's fitness against other nodes.
@@ -77,6 +81,7 @@ pub trait GeneticNode {
     ///
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// # use gemla::error::Error;
     /// #
     /// struct Model {
     ///     pub fit_score: f64,
@@ -89,7 +94,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// impl Model {
-    ///     fn fit(&mut self, epochs: u64) -> Result<(), String> {
+    ///     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
     ///         //...
     /// #        self.fit_score += epochs as f64;
     /// #        Ok(())
@@ -97,13 +102,13 @@ pub trait GeneticNode {
     /// }
     ///    
     /// impl GeneticNode for Node {
-    /// #    fn initialize() -> Result<Box<Self>, String> {
+    /// #    fn initialize() -> Result<Box<Self>, Error> {
     /// #        Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
     /// #    }
     /// #
     ///     //...
     ///
-    ///     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    ///     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     ///            for m in self.models.iter_mut()
     ///            {
     ///                m.fit(iterations)?;
@@ -117,23 +122,23 @@ pub trait GeneticNode {
     /// #        self.models.iter().max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap()).unwrap().fit_score
     /// #    }
     /// #   
-    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #        Ok(())
     /// #    }
     /// #   
-    /// #    fn mutate(&mut self) -> Result<(), String> {
+    /// #    fn mutate(&mut self) -> Result<(), Error> {
     /// #        Ok(())
     /// #    }
     /// }
     ///    
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let mut node = Node::initialize()?;
     /// node.simulate(5)?;
     /// assert_eq!(node.get_fit_score(), 5.0);
     /// #    Ok(())
     /// # }
     /// ```
-    fn simulate(&mut self, iterations: u64) -> Result<(), String>;
+    fn simulate(&mut self, iterations: u64) -> Result<(), Error>;
 
     /// Returns a fit score associated with the nodes performance.
     /// This will be used by a bracket in order to determine the most successful child.
@@ -141,6 +146,7 @@ pub trait GeneticNode {
     /// # Examples
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// # use gemla::error::Error;
     /// #
     /// struct Model {
     ///     pub fit_score: f64,
@@ -153,7 +159,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// # impl Model {
-    /// #     fn fit(&mut self, epochs: u64) -> Result<(), String> {
+    /// #     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
     /// #         //...
     /// #        self.fit_score += epochs as f64;
     /// #        Ok(())
@@ -161,13 +167,13 @@ pub trait GeneticNode {
     /// # }
     ///    
     /// impl GeneticNode for Node {
-    /// #    fn initialize() -> Result<Box<Self>, String> {
+    /// #    fn initialize() -> Result<Box<Self>, Error> {
     /// #        Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
     /// #    }
     /// #
     /// #     //...
     /// #
-    /// #    fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #    fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #           for m in self.models.iter_mut()
     /// #           {
     /// #               m.fit(iterations)?;
@@ -182,16 +188,16 @@ pub trait GeneticNode {
     ///     }
     ///
     ///     //...   
-    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #        Ok(())
     /// #    }
     /// #   
-    /// #    fn mutate(&mut self) -> Result<(), String> {
+    /// #    fn mutate(&mut self) -> Result<(), Error> {
     /// #        Ok(())
     /// #    }
     /// }
     ///    
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let mut node = Node::initialize()?;
     /// node.simulate(5)?;
     /// assert_eq!(node.get_fit_score(), 5.0);
@@ -205,6 +211,7 @@ pub trait GeneticNode {
     /// # Examples
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// # use gemla::error::Error;
     /// #
     /// struct Model {
     ///     pub fit_score: f64,
@@ -218,7 +225,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// # impl Model {
-    /// #     fn fit(&mut self, epochs: u64) -> Result<(), String> {
+    /// #     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
     /// #         //...
     /// #        self.fit_score += epochs as f64;
     /// #         Ok(())
@@ -226,7 +233,7 @@ pub trait GeneticNode {
     /// # }
     ///
     /// impl GeneticNode for Node {
-    /// #     fn initialize() -> Result<Box<Self>, String> {
+    /// #     fn initialize() -> Result<Box<Self>, Error> {
     /// #         Ok(Box::new(Node {
     /// #             models: vec![
     /// #                 Model { fit_score: 0.0 },
@@ -241,7 +248,7 @@ pub trait GeneticNode {
     /// #
     /// #    //...
     /// #
-    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #         for m in self.models.iter_mut() {
     /// #             m.fit(iterations)?;
     /// #         }
@@ -258,7 +265,7 @@ pub trait GeneticNode {
     /// #            .fit_score
     /// #    }
     /// #
-    ///     fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    ///     fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     ///         self.models.sort_by(|a, b| a.fit_score.partial_cmp(&b.fit_score).unwrap().reverse());
     ///         self.models.truncate(3);
     ///         Ok(())
@@ -266,12 +273,12 @@ pub trait GeneticNode {
     ///
     ///     //...
     /// #
-    /// #     fn mutate(&mut self) -> Result<(), String> {
+    /// #     fn mutate(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// }
     ///
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let mut node = Node::initialize()?;
     /// assert_eq!(node.models.len(), 5);
     ///
@@ -283,13 +290,14 @@ pub trait GeneticNode {
     /// # Ok(())
     /// # }
     /// ```
-    fn calculate_scores_and_trim(&mut self) -> Result<(), String>;
+    fn calculate_scores_and_trim(&mut self) -> Result<(), Error>;
 
     /// Mutates members in a population and/or crossbreeds them to produce new offspring.
     ///
     /// # Examples
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
+    /// # use gemla::error::Error;
     /// # use std::convert::TryInto;
     /// #
     /// struct Model {
@@ -304,7 +312,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// # impl Model {
-    /// #     fn fit(&mut self, epochs: u64) -> Result<(), String> {
+    /// #     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
     /// #         //...
     /// #         self.fit_score += epochs as f64;
     /// #         Ok(())
@@ -320,7 +328,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// impl GeneticNode for Node {
-    /// #     fn initialize() -> Result<Box<Self>, String> {
+    /// #     fn initialize() -> Result<Box<Self>, Error> {
     /// #         Ok(Box::new(Node {
     /// #             models: vec![
     /// #                 Model { fit_score: 0.0 },
@@ -333,7 +341,7 @@ pub trait GeneticNode {
     /// #         }))
     /// #     }
     /// #
-    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #         for m in self.models.iter_mut() {
     /// #             m.fit(iterations)?;
     /// #         }
@@ -348,14 +356,14 @@ pub trait GeneticNode {
     /// #            .fit_score
     /// #    }
     /// #
-    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #        self.models.sort_by(|a, b| a.fit_score.partial_cmp(&b.fit_score).unwrap().reverse());
     /// #        self.models.truncate(3);
     /// #        Ok(())
     /// #    }
     ///     //...
     ///
-    ///     fn mutate(&mut self) -> Result<(), String> {
+    ///     fn mutate(&mut self) -> Result<(), Error> {
     ///         loop {
     ///             if self.models.len() < self.population_size.try_into().unwrap()
     ///             {
@@ -368,7 +376,7 @@ pub trait GeneticNode {
     ///     }
     /// }
     ///
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let mut node = Node::initialize()?;
     /// assert_eq!(node.models.len(), 5);
     ///
@@ -383,7 +391,7 @@ pub trait GeneticNode {
     /// # Ok(())
     /// # }
     /// ```
-    fn mutate(&mut self) -> Result<(), String>;
+    fn mutate(&mut self) -> Result<(), Error>;
 }
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
@@ -410,6 +418,7 @@ where
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
     /// # use gemla::bracket::genetic_node::GeneticNodeWrapper;
+    /// # use gemla::error::Error;
     /// # #[derive(Debug)]
     /// struct Node {
     /// #    pub fit_score: f64,
@@ -418,12 +427,12 @@ where
     ///
     /// impl GeneticNode for Node {
     ///     //...
-    /// #    fn initialize() -> Result<Box<Self>, String> {
+    /// #    fn initialize() -> Result<Box<Self>, Error> {
     /// #        Ok(Box::new(Node {fit_score: 0.0}))
     /// #    }
     /// #
     /// #
-    /// #   fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #   fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
     /// #
@@ -431,22 +440,22 @@ where
     /// #       self.fit_score
     /// #   }
     /// #
-    /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
     /// #
-    /// #   fn mutate(&mut self) -> Result<(), String> {
+    /// #   fn mutate(&mut self) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
     /// }
     ///
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let mut wrapped_node = GeneticNodeWrapper::<Node>::new()?;
     /// assert_eq!(wrapped_node.data.unwrap().get_fit_score(), 0.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Result<Self, Error> {
         let mut node = GeneticNodeWrapper {
             data: None,
             state: GeneticState::Initialize,
@@ -476,14 +485,14 @@ where
     /// [`simulate`]: crate::bracket::genetic_node::GeneticNode#tymethod.simulate
     /// [`calculate_scores_and_trim`]: crate::bracket::genetic_node::GeneticNode#tymethod.calculate_scores_and_trim
     /// [`mutate`]: crate::bracket::genetic_node::GeneticNode#tymethod.mutate
-    pub fn process_node(&mut self, iterations: u32) -> Result<(), String> {
+    pub fn process_node(&mut self, iterations: u32) -> Result<(), Error> {
         // Looping through each state transition until the number of iterations have been reached.
         loop {
-            match (self.state, self.data.as_ref()) {
+            match (self.state, &self.data) {
                 (GeneticState::Initialize, _) => {
                     self.iteration = 0;
-                    let new_data =
-                        T::initialize().map_err(|e| format!("Error initializing node: {}", e))?;
+                    let new_data = T::initialize()
+                        .with_context(|| format!("Error initializing node {:?}", self))?;
                     self.data = Some(*new_data);
                     self.state = GeneticState::Simulate;
                 }
@@ -492,7 +501,7 @@ where
                         .as_mut()
                         .unwrap()
                         .simulate(5)
-                        .map_err(|e| format!("Error simulating node: {}", e))?;
+                        .with_context(|| format!("Error simulating node: {:?}", self))?;
                     self.state = GeneticState::Score;
                 }
                 (GeneticState::Score, Some(_)) => {
@@ -500,7 +509,7 @@ where
                         .as_mut()
                         .unwrap()
                         .calculate_scores_and_trim()
-                        .map_err(|e| format!("Error scoring and trimming node: {}", e))?;
+                        .with_context(|| format!("Error scoring and trimming node: {:?}", self))?;
 
                     self.state = if self.iteration == iterations {
                         GeneticState::Finish
@@ -513,13 +522,13 @@ where
                         .as_mut()
                         .unwrap()
                         .mutate()
-                        .map_err(|e| format!("Error mutating node: {}", e))?;
+                        .with_context(|| format!("Error mutating node: {:?}", self))?;
                     self.state = GeneticState::Simulate;
                 }
                 (GeneticState::Finish, Some(_)) => {
                     break;
                 }
-                _ => return Err(format!("Error processing node {:?}", self.data)),
+                _ => panic!("Error processing node {:?}", self.data),
             }
         }
 

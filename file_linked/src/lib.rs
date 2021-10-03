@@ -4,11 +4,24 @@ extern crate serde;
 
 use std::fmt;
 use std::fs;
+use std::io;
 use std::io::prelude::*;
 use std::path;
 
+use anyhow::{anyhow, Context};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error(transparent)]
+    Serialization(serde_json::Error),
+    #[error(transparent)]
+    IO(std::io::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
 
 /// A wrapper around an object `T` that ties the object to a physical file
 pub struct FileLinked<T>
@@ -95,9 +108,12 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn new(val: T, path: path::PathBuf) -> Result<FileLinked<T>, String> {
+    pub fn new(val: T, path: path::PathBuf) -> Result<FileLinked<T>, Error> {
         if path.is_file() {
-            return Err(format!("{} is not a valid file path", path.display()));
+            return Err(Error::IO(io::Error::new(
+                io::ErrorKind::Other,
+                anyhow!("{} is not a valid file path", path.display()),
+            )));
         }
 
         let result = FileLinked { val, path };
@@ -107,20 +123,20 @@ where
         Ok(result)
     }
 
-    fn write_data(&self) -> Result<(), String> {
+    fn write_data(&self) -> Result<(), Error> {
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .open(&self.path)
-            .map_err(|_| format!("Unable to open path {}", self.path.display()))?;
+            .with_context(|| format!("Unable to open path {}", self.path.display()))?;
 
         write!(
             file,
             "{}",
-            serde_json::to_string(&self.val).map_err(|e| e.to_string())?
+            serde_json::to_string(&self.val).map_err(Error::Serialization)?
         )
-        .or_else(|_| Err(String::from("Unable to write to file.")))?;
+        .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
 
         Ok(())
     }
@@ -143,7 +159,7 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from(""),
@@ -164,7 +180,7 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn mutate<U, F: FnOnce(&mut T) -> U>(&mut self, op: F) -> Result<U, String> {
+    pub fn mutate<U, F: FnOnce(&mut T) -> U>(&mut self, op: F) -> Result<U, Error> {
         let result = op(&mut self.val);
 
         self.write_data()?;
@@ -189,7 +205,7 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from(""),
@@ -214,7 +230,7 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn replace(&mut self, val: T) -> Result<(), String> {
+    pub fn replace(&mut self, val: T) -> Result<(), Error> {
         self.val = val;
 
         self.write_data()
@@ -245,7 +261,7 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() -> Result<(), String> {
+    /// # fn main() -> Result<(), Error> {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from("2"),
@@ -278,27 +294,33 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_file(path: path::PathBuf) -> Result<FileLinked<T>, String> {
+    pub fn from_file(path: path::PathBuf) -> Result<FileLinked<T>, Error> {
         if !path.is_file() {
-            return Err(format!("{} is not a valid file path", path.display()));
+            return Err(Error::IO(io::Error::new(
+                io::ErrorKind::Other,
+                anyhow!("{} is not a valid file path", path.display()),
+            )));
         }
 
         let metadata = path
             .metadata()
-            .map_err(|_| format!("Error obtaining metadata for {}", path.display()))?;
+            .with_context(|| format!("Error obtaining metadata for {}", path.display()))?;
 
         if metadata.is_file() {
             let file = fs::OpenOptions::new()
                 .read(true)
                 .open(&path)
-                .map_err(|_| format!("Unable to open file {}", path.display()))?;
+                .with_context(|| format!("Unable to open file {}", path.display()))?;
 
             let val = serde_json::from_reader(file)
-                .map_err(|_| String::from("Unable to parse value from file."))?;
+                .with_context(|| String::from("Unable to parse value from file."))?;
 
             Ok(FileLinked { val, path })
         } else {
-            Err(format!("{} is not a file.", path.display()))
+            return Err(Error::IO(io::Error::new(
+                io::ErrorKind::Other,
+                anyhow!("{} is not a file.", path.display()),
+            )));
         }
     }
 }
@@ -318,7 +340,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_mutate() -> Result<(), String> {
+    fn test_mutate() -> Result<(), Error> {
         let list = vec![1, 2, 3, 4];
         let mut file_linked_list = FileLinked::new(list, path::PathBuf::from("test.txt"))?;
 

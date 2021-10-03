@@ -16,11 +16,9 @@
 //! assert_eq!(t.right.unwrap().val, 3);
 //! ```
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::fmt;
-use std::str::FromStr;
 
 /// An unbalanced binary tree type where each node has an optional left and right child.
 ///
@@ -152,17 +150,6 @@ impl<T: fmt::Debug + Serialize> fmt::Debug for Tree<T> {
             Ok(string) => write!(f, "{}", string),
             Err(_) => Err(std::fmt::Error),
         }
-    }
-}
-
-impl<T> FromStr for Tree<T>
-where
-    T: FromStr + DeserializeOwned,
-{
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
     }
 }
 

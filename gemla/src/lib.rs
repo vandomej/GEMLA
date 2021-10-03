@@ -5,3 +5,4 @@ extern crate regex;
 pub mod tree;
 pub mod bracket;
 pub mod constants;
+pub mod error;

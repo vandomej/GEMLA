@@ -19,3 +19,5 @@ clap = { version = "~2.27.0", features = ["yaml"] }
 toml = "0.5.8"
 regex = "1"
 file_linked = { version = "0.1.0", path = "../file_linked" }
+thiserror = "1.0"
+anyhow = "1.0"

@@ -3,14 +3,14 @@
 
 pub mod genetic_node;
 
-use super::tree;
+use crate::error::Error;
+use crate::tree;
 
 use file_linked::FileLinked;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path;
-use std::str::FromStr;
 
 /// As the bracket tree increases in height, `IterationScaling` can be used to configure the number of iterations that
 /// a node runs for.
@@ -19,6 +19,7 @@ use std::str::FromStr;
 ///
 /// ```
 /// # use gemla::bracket::*;
+/// # use gemla::error::Error;
 /// # use serde::{Deserialize, Serialize};
 /// # use std::fmt;
 /// # use std::str::FromStr;
@@ -30,14 +31,6 @@ use std::str::FromStr;
 /// #   pub score: f64,
 /// # }
 /// #
-/// # impl FromStr for TestState {
-/// #   type Err = String;
-/// #
-/// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-/// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
-/// #   }
-/// # }
-/// #
 /// # impl TestState {
 /// #     fn new(score: f64) -> TestState {
 /// #         TestState { score: score }
@@ -45,7 +38,7 @@ use std::str::FromStr;
 /// # }
 /// #
 /// # impl genetic_node::GeneticNode for TestState {
-/// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+/// #     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
 /// #         self.score += iterations as f64;
 /// #         Ok(())
 /// #     }
@@ -54,15 +47,15 @@ use std::str::FromStr;
 /// #         self.score
 /// #     }
 /// #
-/// #     fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+/// #     fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
 /// #         Ok(())
 /// #     }
 /// #
-/// #     fn mutate(&mut self) -> Result<(), String> {
+/// #     fn mutate(&mut self) -> Result<(), Error> {
 /// #         Ok(())
 /// #     }
 /// #
-/// #     fn initialize() -> Result<Box<Self>, String> {
+/// #     fn initialize() -> Result<Box<Self>, Error> {
 /// #         Ok(Box::new(TestState { score: 0.0 }))
 /// #     }
 /// # }
@@ -135,7 +128,7 @@ where
 
 impl<T> Bracket<T>
 where
-    T: genetic_node::GeneticNode + FromStr + Default + DeserializeOwned + Serialize + Clone,
+    T: genetic_node::GeneticNode + Default + DeserializeOwned + Serialize + Clone,
 {
     /// Initializes a bracket of type `T` storing the contents to `file_path`
     ///
@@ -143,6 +136,7 @@ where
     /// ```
     /// # use gemla::bracket::*;
     /// # use gemla::btree;
+    /// # use gemla::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::str::FromStr;
@@ -175,7 +169,7 @@ where
     /// }
     ///
     /// impl genetic_node::GeneticNode for TestState {
-    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #         self.score += iterations as f64;
     /// #         Ok(())
     /// #     }
@@ -184,15 +178,15 @@ where
     /// #         self.score
     /// #     }
     /// #
-    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// #
-    /// #     fn mutate(&mut self) -> Result<(), String> {
+    /// #     fn mutate(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// #
-    ///     fn initialize() -> Result<Box<Self>, String> {
+    ///     fn initialize() -> Result<Box<Self>, Error> {
     ///         Ok(Box::new(TestState { score: 0.0 }))
     ///     }
     ///
@@ -212,14 +206,14 @@ where
     /// std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn initialize(file_path: path::PathBuf) -> Result<FileLinked<Self>, String> {
-        FileLinked::new(
+    pub fn initialize(file_path: path::PathBuf) -> Result<FileLinked<Self>, Error> {
+        Ok(FileLinked::new(
             Bracket {
                 tree: btree!(*T::initialize()?),
                 iteration_scaling: IterationScaling::default(),
             },
             file_path,
-        )
+        )?)
     }
 
     /// Given a bracket object, configures it's [`IterationScaling`].
@@ -227,6 +221,7 @@ where
     /// # Examples
     /// ```
     /// # use gemla::bracket::*;
+    /// # use gemla::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::str::FromStr;
@@ -236,14 +231,6 @@ where
     /// # #[derive(Default, Deserialize, Serialize, Clone)]
     /// # struct TestState {
     /// #   pub score: f64,
-    /// # }
-    /// #
-    /// # impl FromStr for TestState {
-    /// #   type Err = String;
-    /// #
-    /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-    /// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
-    /// #   }
     /// # }
     /// #
     /// # impl fmt::Display for TestState {
@@ -259,7 +246,7 @@ where
     /// # }
     /// #
     /// # impl genetic_node::GeneticNode for TestState {
-    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #         self.score += iterations as f64;
     /// #         Ok(())
     /// #     }
@@ -268,15 +255,15 @@ where
     /// #         self.score
     /// #     }
     /// #
-    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// #
-    /// #     fn mutate(&mut self) -> Result<(), String> {
+    /// #     fn mutate(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// #
-    /// #     fn initialize() -> Result<Box<Self>, String> {
+    /// #     fn initialize() -> Result<Box<Self>, Error> {
     /// #         Ok(Box::new(TestState { score: 0.0 }))
     /// #     }
     /// # }
@@ -300,7 +287,7 @@ where
 
     // Creates a balanced tree with the given `height` that will be used as a branch of the primary tree.
     // This additionally simulates and evaluates nodes in the branch as it is built.
-    fn create_new_branch(&self, height: u64) -> Result<tree::Tree<T>, String> {
+    fn create_new_branch(&self, height: u64) -> Result<tree::Tree<T>, Error> {
         if height == 1 {
             let mut base_node = btree!(*T::initialize()?);
 
@@ -337,6 +324,7 @@ where
     /// # Examples
     /// ```
     /// # use gemla::bracket::*;
+    /// # use gemla::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::str::FromStr;
@@ -346,14 +334,6 @@ where
     /// # #[derive(Default, Deserialize, Serialize, Clone)]
     /// # struct TestState {
     /// #   pub score: f64,
-    /// # }
-    /// #
-    /// # impl FromStr for TestState {
-    /// #   type Err = String;
-    /// #
-    /// #   fn from_str(s: &str) -> Result<TestState, Self::Err> {
-    /// #       serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
-    /// #   }
     /// # }
     /// #
     /// # impl fmt::Display for TestState {
@@ -369,7 +349,7 @@ where
     /// # }
     /// #
     /// # impl genetic_node::GeneticNode for TestState {
-    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+    /// #     fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
     /// #         self.score += iterations as f64;
     /// #         Ok(())
     /// #     }
@@ -378,15 +358,15 @@ where
     /// #         self.score
     /// #     }
     /// #
-    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+    /// #     fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// #
-    /// #     fn mutate(&mut self) -> Result<(), String> {
+    /// #     fn mutate(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
     /// #
-    /// #     fn initialize() -> Result<Box<Self>, String> {
+    /// #     fn initialize() -> Result<Box<Self>, Error> {
     /// #         Ok(Box::new(TestState { score: 0.0 }))
     /// #     }
     /// # }
@@ -407,7 +387,7 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn run_simulation_step(&mut self) -> Result<&mut Self, String> {
+    pub fn run_simulation_step(&mut self) -> Result<&mut Self, Error> {
         let new_branch = self.create_new_branch(self.tree.height())?;
 
         self.tree.val.simulate(match self.iteration_scaling {
@@ -448,7 +428,7 @@ mod tests {
     }
 
     impl genetic_node::GeneticNode for TestState {
-        fn simulate(&mut self, iterations: u64) -> Result<(), String> {
+        fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
             self.score += iterations as f64;
             Ok(())
         }
@@ -457,15 +437,15 @@ mod tests {
             self.score
         }
 
-        fn calculate_scores_and_trim(&mut self) -> Result<(), String> {
+        fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
             Ok(())
         }
 
-        fn mutate(&mut self) -> Result<(), String> {
+        fn mutate(&mut self) -> Result<(), Error> {
             Ok(())
         }
 
-        fn initialize() -> Result<Box<Self>, String> {
+        fn initialize() -> Result<Box<Self>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
     }
