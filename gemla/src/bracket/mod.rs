@@ -9,7 +9,6 @@ use crate::tree;
 use file_linked::FileLinked;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::path;
 
 /// As the bracket tree increases in height, `IterationScaling` can be used to configure the number of iterations that
@@ -26,7 +25,7 @@ use std::path;
 /// # use std::string::ToString;
 /// # use std::path;
 /// #
-/// # #[derive(Default, Deserialize, Serialize, Clone)]
+/// # #[derive(Default, Deserialize, Serialize, Clone, PartialEq)]
 /// # struct TestState {
 /// #   pub score: f64,
 /// # }
@@ -72,7 +71,7 @@ use std::path;
 /// # std::fs::remove_file("./temp").expect("Unable to remove file");
 /// # }
 /// ```
-#[derive(Clone, Serialize, Deserialize, Copy)]
+#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
 #[serde(tag = "enumType", content = "enumContent")]
 pub enum IterationScaling {
     /// Scales the number of simulations linearly with the height of the  bracket tree given by `f(x) = mx` where
@@ -88,47 +87,24 @@ impl Default for IterationScaling {
     }
 }
 
-impl fmt::Debug for IterationScaling {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::to_string(self).expect("Unable to deserialize IterationScaling struct")
-        )
-    }
-}
-
 /// Creates a tournament style bracket for simulating and evaluating nodes of type `T` implementing [`GeneticNode`].
 /// These nodes are built upwards as a balanced binary tree starting from the bottom. This results in `Bracket` building
 /// a separate tree of the same height then merging trees together. Evaluating populations between nodes and taking the strongest
 /// individuals.
 ///
 /// [`GeneticNode`]: genetic_node::GeneticNode
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Bracket<T>
 where
-    T: genetic_node::GeneticNode,
+    T: genetic_node::GeneticNode + Serialize,
 {
     pub tree: tree::Tree<T>,
     iteration_scaling: IterationScaling,
 }
 
-impl<T> fmt::Debug for Bracket<T>
-where
-    T: genetic_node::GeneticNode + Serialize,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::to_string(self).expect("Unable to deserialize Bracket struct")
-        )
-    }
-}
-
 impl<T> Bracket<T>
 where
-    T: genetic_node::GeneticNode + Default + DeserializeOwned + Serialize + Clone,
+    T: genetic_node::GeneticNode + Default + DeserializeOwned + Serialize + Clone + PartialEq,
 {
     /// Initializes a bracket of type `T` storing the contents to `file_path`
     ///
@@ -136,6 +112,7 @@ where
     /// ```
     /// # use gemla::bracket::*;
     /// # use gemla::btree;
+    /// # use gemla::tree;
     /// # use gemla::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
@@ -143,7 +120,7 @@ where
     /// # use std::string::ToString;
     /// # use std::path;
     /// #
-    /// #[derive(Default, Deserialize, Serialize, Debug, Clone)]
+    /// #[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
     /// struct TestState {
     ///   pub score: f64,
     /// }
@@ -197,12 +174,6 @@ where
     /// let mut bracket = Bracket::<TestState>::initialize(path::PathBuf::from("./temp"))
     /// .expect("Bracket failed to initialize");
     ///
-    /// assert_eq!(
-    ///    format!("{:?}", bracket),
-    ///    format!("{{\"tree\":{:?},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}",
-    ///    btree!(TestState{score: 0.0}))
-    /// );
-    ///
     /// std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
@@ -228,7 +199,7 @@ where
     /// # use std::string::ToString;
     /// # use std::path;
     /// #
-    /// # #[derive(Default, Deserialize, Serialize, Clone)]
+    /// # #[derive(Default, Deserialize, Serialize, Clone, PartialEq)]
     /// # struct TestState {
     /// #   pub score: f64,
     /// # }
@@ -331,7 +302,7 @@ where
     /// # use std::string::ToString;
     /// # use std::path;
     /// #
-    /// # #[derive(Default, Deserialize, Serialize, Clone)]
+    /// # #[derive(Default, Deserialize, Serialize, Clone, PartialEq)]
     /// # struct TestState {
     /// #   pub score: f64,
     /// # }
@@ -409,12 +380,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::bracket::*;
+    use crate::tree::*;
 
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
 
-    #[derive(Default, Deserialize, Serialize, Clone, Debug)]
+    #[derive(Default, Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
         pub score: f64,
     }
@@ -456,9 +428,19 @@ mod tests {
             .expect("Bracket failed to initialize");
 
         assert_eq!(
-            format!("{:?}", bracket),
-            format!("{{\"tree\":{:?},\"iteration_scaling\":{{\"enumType\":\"Constant\",\"enumContent\":1}}}}", 
-            btree!(TestState{score: 0.0}))
+            bracket,
+            file_linked::FileLinked::new(
+                Bracket {
+                    tree: Tree {
+                        val: TestState { score: 0.0 },
+                        left: None,
+                        right: None
+                    },
+                    iteration_scaling: IterationScaling::Constant(1)
+                },
+                path::PathBuf::from("./temp")
+            )
+            .unwrap()
         );
 
         std::fs::remove_file("./temp").expect("Unable to remove file");
@@ -479,29 +461,43 @@ mod tests {
         }
 
         assert_eq!(
-            format!("{:?}", bracket),
-            format!("{{\"tree\":{:?},\"iteration_scaling\":{{\"enumType\":\"Linear\",\"enumContent\":2}}}}", 
-            btree!(
-                TestState{score: 12.0},
-                btree!(
-                    TestState{score: 12.0},
-                    btree!(TestState{score: 6.0},
-                        btree!(TestState{score: 2.0}),
-                        btree!(TestState{score: 2.0})),
-                    btree!(TestState{score: 6.0},
-                        btree!(TestState{score: 2.0}),
-                        btree!(TestState{score: 2.0}))
-                ),
-                btree!(
-                    TestState{score: 12.0},
-                    btree!(TestState{score: 6.0},
-                        btree!(TestState{score: 2.0}),
-                        btree!(TestState{score: 2.0})),
-                    btree!(TestState{score: 6.0},
-                        btree!(TestState{score: 2.0}),
-                        btree!(TestState{score: 2.0})))
-                )
+            bracket,
+            file_linked::FileLinked::new(
+                Bracket {
+                    iteration_scaling: IterationScaling::Linear(2),
+                    tree: btree!(
+                        TestState { score: 12.0 },
+                        btree!(
+                            TestState { score: 12.0 },
+                            btree!(
+                                TestState { score: 6.0 },
+                                btree!(TestState { score: 2.0 }),
+                                btree!(TestState { score: 2.0 })
+                            ),
+                            btree!(
+                                TestState { score: 6.0 },
+                                btree!(TestState { score: 2.0 }),
+                                btree!(TestState { score: 2.0 })
+                            )
+                        ),
+                        btree!(
+                            TestState { score: 12.0 },
+                            btree!(
+                                TestState { score: 6.0 },
+                                btree!(TestState { score: 2.0 }),
+                                btree!(TestState { score: 2.0 })
+                            ),
+                            btree!(
+                                TestState { score: 6.0 },
+                                btree!(TestState { score: 2.0 }),
+                                btree!(TestState { score: 2.0 })
+                            )
+                        )
+                    )
+                },
+                path::PathBuf::from("./temp2")
             )
+            .unwrap()
         );
 
         std::fs::remove_file("./temp2").expect("Unable to remove file");

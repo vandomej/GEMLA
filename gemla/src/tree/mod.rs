@@ -18,7 +18,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
-use std::fmt;
 
 /// An unbalanced binary tree type where each node has an optional left and right child.
 ///
@@ -37,7 +36,7 @@ use std::fmt;
 /// t.right = Some(Box::new(btree!(3)));
 /// assert_eq!(t.right.unwrap().val, 3);
 /// ```
-#[derive(Default, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct Tree<T> {
     pub val: T,
     pub left: Option<Box<Tree<T>>>,
@@ -142,17 +141,6 @@ impl<T> Tree<T> {
     }
 }
 
-impl<T: fmt::Debug + Serialize> fmt::Debug for Tree<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let result = serde_json::to_string(self);
-
-        match result {
-            Ok(string) => write!(f, "{}", string),
-            Err(_) => Err(std::fmt::Error),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,14 +158,6 @@ mod tests {
                     right: None,
                 })),
             }
-        );
-    }
-
-    #[test]
-    fn test_fmt() {
-        assert_eq!(
-            format!("{:?}", btree!("foo", btree!("bar"),),),
-            "{\"val\":\"foo\",\"left\":{\"val\":\"bar\",\"left\":null,\"right\":null},\"right\":null}"
         );
     }
 

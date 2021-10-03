@@ -2,7 +2,6 @@
 
 extern crate serde;
 
-use std::fmt;
 use std::fs;
 use std::io;
 use std::io::prelude::*;
@@ -24,6 +23,7 @@ pub enum Error {
 }
 
 /// A wrapper around an object `T` that ties the object to a physical file
+#[derive(Debug, PartialEq)]
 pub struct FileLinked<T>
 where
     T: Serialize,
@@ -109,13 +109,6 @@ where
     /// # }
     /// ```
     pub fn new(val: T, path: path::PathBuf) -> Result<FileLinked<T>, Error> {
-        if path.is_file() {
-            return Err(Error::IO(io::Error::new(
-                io::ErrorKind::Other,
-                anyhow!("{} is not a valid file path", path.display()),
-            )));
-        }
-
         let result = FileLinked { val, path };
 
         result.write_data()?;
@@ -295,13 +288,6 @@ where
     /// # }
     /// ```
     pub fn from_file(path: path::PathBuf) -> Result<FileLinked<T>, Error> {
-        if !path.is_file() {
-            return Err(Error::IO(io::Error::new(
-                io::ErrorKind::Other,
-                anyhow!("{} is not a valid file path", path.display()),
-            )));
-        }
-
         let metadata = path
             .metadata()
             .with_context(|| format!("Error obtaining metadata for {}", path.display()))?;
@@ -322,15 +308,6 @@ where
                 anyhow!("{} is not a file.", path.display()),
             )));
         }
-    }
-}
-
-impl<T> fmt::Debug for FileLinked<T>
-where
-    T: fmt::Debug + Serialize,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.val)
     }
 }
 
