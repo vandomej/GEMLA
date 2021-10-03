@@ -21,3 +21,4 @@ regex = "1"
 file_linked = { version = "0.1.0", path = "../file_linked" }
 thiserror = "1.0"
 anyhow = "1.0"
+rand = "0.8.4"

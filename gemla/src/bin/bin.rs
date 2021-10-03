@@ -2,6 +2,8 @@
 extern crate clap;
 extern crate gemla;
 
+mod test_state;
+
 use clap::App;
 use std::fs::metadata;
 
