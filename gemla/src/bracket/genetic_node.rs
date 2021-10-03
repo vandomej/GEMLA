@@ -11,7 +11,7 @@ use std::fmt;
 /// An enum used to control the state of a [`GeneticNode`]
 ///
 /// [`GeneticNode`]: crate::bracket::genetic_node
-#[derive(Clone, Debug, Serialize, Deserialize, Copy)]
+#[derive(Clone, Debug, Serialize, Deserialize, Copy, PartialEq)]
 #[serde(tag = "enumType", content = "enumContent")]
 pub enum GeneticState {
     /// The node and it's data have not finished initializing
@@ -396,14 +396,14 @@ pub trait GeneticNode {
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GeneticNodeWrapper<T>
 where
     T: GeneticNode,
 {
     pub data: Option<T>,
     state: GeneticState,
-    pub iteration: u32,
+    pub iteration: u64,
 }
 
 impl<T> GeneticNodeWrapper<T>
@@ -485,7 +485,7 @@ where
     /// [`simulate`]: crate::bracket::genetic_node::GeneticNode#tymethod.simulate
     /// [`calculate_scores_and_trim`]: crate::bracket::genetic_node::GeneticNode#tymethod.calculate_scores_and_trim
     /// [`mutate`]: crate::bracket::genetic_node::GeneticNode#tymethod.mutate
-    pub fn process_node(&mut self, iterations: u32) -> Result<(), Error> {
+    pub fn process_node(&mut self, iterations: u64) -> Result<(), Error> {
         // Looping through each state transition until the number of iterations have been reached.
         loop {
             match (self.state, &self.data) {
@@ -523,6 +523,8 @@ where
                         .unwrap()
                         .mutate()
                         .with_context(|| format!("Error mutating node: {:?}", self))?;
+
+                    self.iteration += 1;
                     self.state = GeneticState::Simulate;
                 }
                 (GeneticState::Finish, Some(_)) => {
