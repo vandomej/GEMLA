@@ -43,7 +43,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// impl GeneticNode for Node {
-    ///     fn initialize() -> Result<Box<Self>, Error> {
+    ///     fn initialize() -> Result<Box<Node>, Error> {
     ///         Ok(Box::new(Node {fit_score: 0.0}))
     ///     }
     ///
@@ -63,6 +63,10 @@ pub trait GeneticNode {
     /// #
     /// #   fn mutate(&mut self) -> Result<(), Error> {
     /// #       Ok(())
+    /// #   }
+    /// #
+    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
+    /// #       Ok(Box::new(Node {fit_score: 0.0}))
     /// #   }
     /// }
     ///
@@ -102,7 +106,7 @@ pub trait GeneticNode {
     /// }
     ///    
     /// impl GeneticNode for Node {
-    /// #    fn initialize() -> Result<Box<Self>, Error> {
+    /// #    fn initialize() -> Result<Box<Node>, Error> {
     /// #        Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
     /// #    }
     /// #
@@ -129,6 +133,10 @@ pub trait GeneticNode {
     /// #    fn mutate(&mut self) -> Result<(), Error> {
     /// #        Ok(())
     /// #    }
+    /// #
+    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
+    /// #       Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
+    /// #   }
     /// }
     ///    
     /// # fn main() -> Result<(), Error> {
@@ -167,7 +175,7 @@ pub trait GeneticNode {
     /// # }
     ///    
     /// impl GeneticNode for Node {
-    /// #    fn initialize() -> Result<Box<Self>, Error> {
+    /// #    fn initialize() -> Result<Box<Node>, Error> {
     /// #        Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
     /// #    }
     /// #
@@ -195,6 +203,10 @@ pub trait GeneticNode {
     /// #    fn mutate(&mut self) -> Result<(), Error> {
     /// #        Ok(())
     /// #    }
+    /// #
+    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
+    /// #       Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
+    /// #   }
     /// }
     ///    
     /// # fn main() -> Result<(), Error> {
@@ -233,7 +245,7 @@ pub trait GeneticNode {
     /// # }
     ///
     /// impl GeneticNode for Node {
-    /// #     fn initialize() -> Result<Box<Self>, Error> {
+    /// #     fn initialize() -> Result<Box<Node>, Error> {
     /// #         Ok(Box::new(Node {
     /// #             models: vec![
     /// #                 Model { fit_score: 0.0 },
@@ -276,6 +288,10 @@ pub trait GeneticNode {
     /// #     fn mutate(&mut self) -> Result<(), Error> {
     /// #         Ok(())
     /// #     }
+    /// #
+    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
+    /// #       Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}], population_size: 1}))
+    /// #   }
     /// }
     ///
     /// # fn main() -> Result<(), Error> {
@@ -328,7 +344,7 @@ pub trait GeneticNode {
     /// }
     ///
     /// impl GeneticNode for Node {
-    /// #     fn initialize() -> Result<Box<Self>, Error> {
+    /// #     fn initialize() -> Result<Box<Node>, Error> {
     /// #         Ok(Box::new(Node {
     /// #             models: vec![
     /// #                 Model { fit_score: 0.0 },
@@ -374,6 +390,10 @@ pub trait GeneticNode {
     ///             }
     ///         }
     ///     }
+    /// #
+    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
+    /// #       Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}], population_size: 1}))
+    /// #   }
     /// }
     ///
     /// # fn main() -> Result<(), Error> {
@@ -392,6 +412,8 @@ pub trait GeneticNode {
     /// # }
     /// ```
     fn mutate(&mut self) -> Result<(), Error>;
+
+    fn merge(left: &Self, right: &Self) -> Result<Box<Self>, Error>;
 }
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
@@ -427,7 +449,7 @@ where
     ///
     /// impl GeneticNode for Node {
     ///     //...
-    /// #    fn initialize() -> Result<Box<Self>, Error> {
+    /// #    fn initialize() -> Result<Box<Node>, Error> {
     /// #        Ok(Box::new(Node {fit_score: 0.0}))
     /// #    }
     /// #
@@ -446,6 +468,10 @@ where
     /// #
     /// #   fn mutate(&mut self) -> Result<(), Error> {
     /// #       Ok(())
+    /// #   }
+    /// #
+    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
+    /// #       Ok(Box::new(Node {fit_score: 0.0}))
     /// #   }
     /// }
     ///

@@ -59,6 +59,10 @@ use std::path;
 /// #     fn initialize() -> Result<Box<Self>, Error> {
 /// #         Ok(Box::new(TestState { score: 0.0 }))
 /// #     }
+/// #
+/// #     fn merge(left: &TestState, right: &TestState) -> Result<Box<Self>, Error> {
+/// #         Ok(Box::new(left.clone()))
+/// #     }
 /// # }
 /// #
 /// # fn main() {
@@ -176,6 +180,10 @@ where
     ///     }
     ///
     ///     //...
+    /// #
+    /// #     fn merge(left: &TestState, right: &TestState) -> Result<Box<Self>, Error> {
+    /// #         Ok(Box::new(left.clone()))
+    /// #     }
     /// }
     ///
     /// # fn main() {
@@ -244,6 +252,10 @@ where
     /// #
     /// #     fn initialize() -> Result<Box<Self>, Error> {
     /// #         Ok(Box::new(TestState { score: 0.0 }))
+    /// #     }
+    /// #
+    /// #     fn merge(left: &TestState, right: &TestState) -> Result<Box<Self>, Error> {
+    /// #         Ok(Box::new(left.clone()))
     /// #     }
     /// # }
     /// #
@@ -353,6 +365,10 @@ where
     /// #     fn initialize() -> Result<Box<Self>, Error> {
     /// #         Ok(Box::new(TestState { score: 0.0 }))
     /// #     }
+    /// #
+    /// #     fn merge(left: &TestState, right: &TestState) -> Result<Box<Self>, Error> {
+    /// #         Ok(Box::new(left.clone()))
+    /// #     }
     /// # }
     /// #
     /// # fn main() {
@@ -442,8 +458,16 @@ mod tests {
             Ok(())
         }
 
-        fn initialize() -> Result<Box<Self>, Error> {
+        fn initialize() -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
+        }
+
+        fn merge(left: &TestState, right: &TestState) -> Result<Box<TestState>, Error> {
+            Ok(Box::new(if left.get_fit_score() > right.get_fit_score() {
+                left.clone()
+            } else {
+                right.clone()
+            }))
         }
     }
 
