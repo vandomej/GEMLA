@@ -40,14 +40,6 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn get_fit_score(&self) -> f64 {
-        self.population
-            .clone()
-            .into_iter()
-            .reduce(f64::max)
-            .unwrap()
-    }
-
     fn calculate_scores_and_trim(&mut self) -> Result<(), error::Error> {
         let mut v = self.population.clone();
 
@@ -142,16 +134,6 @@ mod tests {
             .iter()
             .zip(state.population.iter())
             .all(|(&a, &b)| b >= a - 30.0 && b <= a + 30.0))
-    }
-
-    #[test]
-    fn test_get_fit_score() {
-        let state = TestState {
-            thread_rng: thread_rng(),
-            population: vec![1.0, 1.0, 2.0, 3.0],
-        };
-
-        assert_eq!(state.get_fit_score(), 3.0);
     }
 
     #[test]

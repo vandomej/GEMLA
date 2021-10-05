@@ -53,10 +53,6 @@ pub trait GeneticNode {
     /// #       Ok(())
     /// #   }
     /// #
-    /// #   fn get_fit_score(&self) -> f64 {
-    /// #       self.fit_score
-    /// #   }
-    /// #
     /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
@@ -72,7 +68,7 @@ pub trait GeneticNode {
     ///
     /// # fn main() -> Result<(), Error> {
     /// let node = Node::initialize()?;
-    /// assert_eq!(node.get_fit_score(), 0.0);
+    /// assert_eq!(node.fit_score, 0.0);
     /// # Ok(())
     /// # }
     /// ```
@@ -81,7 +77,7 @@ pub trait GeneticNode {
     /// Runs a simulation on the state object for the given number of `iterations` in order to guage it's fitness.
     /// This will be called for every node in a bracket before evaluating it's fitness against other nodes.
     ///
-    /// #Examples
+    /// # Examples
     ///
     /// ```
     /// # use gemla::bracket::genetic_node::GeneticNode;
@@ -104,7 +100,17 @@ pub trait GeneticNode {
     /// #        Ok(())
     ///     }
     /// }
-    ///    
+    /// 
+    /// # impl Node {
+    /// #   fn get_fit_score(&self) -> f64 {
+    /// #       self.models
+    /// #           .iter()
+    /// #           .max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap())
+    /// #           .unwrap()
+    /// #           .fit_score
+    /// #   }
+    /// # }
+    /// #
     /// impl GeneticNode for Node {
     /// #    fn initialize() -> Result<Box<Node>, Error> {
     /// #        Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
@@ -121,10 +127,6 @@ pub trait GeneticNode {
     ///        }
     ///
     ///     //...
-    ///
-    /// #    fn get_fit_score(&self) -> f64 {
-    /// #        self.models.iter().max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap()).unwrap().fit_score
-    /// #    }
     /// #   
     /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #        Ok(())
@@ -148,76 +150,6 @@ pub trait GeneticNode {
     /// ```
     fn simulate(&mut self, iterations: u64) -> Result<(), Error>;
 
-    /// Returns a fit score associated with the nodes performance.
-    /// This will be used by a bracket in order to determine the most successful child.
-    ///
-    /// # Examples
-    /// ```
-    /// # use gemla::bracket::genetic_node::GeneticNode;
-    /// # use gemla::error::Error;
-    /// #
-    /// struct Model {
-    ///     pub fit_score: f64,
-    ///     //...
-    /// }
-    ///
-    /// struct Node {
-    ///     pub models: Vec<Model>,
-    ///     //...
-    /// }
-    ///
-    /// # impl Model {
-    /// #     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
-    /// #         //...
-    /// #        self.fit_score += epochs as f64;
-    /// #        Ok(())
-    /// #     }
-    /// # }
-    ///    
-    /// impl GeneticNode for Node {
-    /// #    fn initialize() -> Result<Box<Node>, Error> {
-    /// #        Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
-    /// #    }
-    /// #
-    /// #     //...
-    /// #
-    /// #    fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
-    /// #           for m in self.models.iter_mut()
-    /// #           {
-    /// #               m.fit(iterations)?;
-    /// #           }
-    /// #           Ok(())
-    /// #       }
-    /// #
-    ///     //...
-    ///
-    ///     fn get_fit_score(&self) -> f64 {
-    ///         self.models.iter().max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap()).unwrap().fit_score
-    ///     }
-    ///
-    ///     //...   
-    /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
-    /// #        Ok(())
-    /// #    }
-    /// #   
-    /// #    fn mutate(&mut self) -> Result<(), Error> {
-    /// #        Ok(())
-    /// #    }
-    /// #
-    /// #   fn merge(left: &Node, right: &Node) -> Result<Box<Node>, Error> {
-    /// #       Ok(Box::new(Node {models: vec![Model {fit_score: 0.0}]}))
-    /// #   }
-    /// }
-    ///    
-    /// # fn main() -> Result<(), Error> {
-    /// let mut node = Node::initialize()?;
-    /// node.simulate(5)?;
-    /// assert_eq!(node.get_fit_score(), 5.0);
-    /// #    Ok(())
-    /// # }
-    /// ```
-    fn get_fit_score(&self) -> f64;
-
     /// Used when scoring the nodes after simulating and should remove underperforming children.
     ///
     /// # Examples
@@ -239,11 +171,23 @@ pub trait GeneticNode {
     /// # impl Model {
     /// #     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
     /// #         //...
-    /// #        self.fit_score += epochs as f64;
+    /// #         self.fit_score += epochs as f64;
     /// #         Ok(())
     /// #     }
     /// # }
-    ///
+    /// #
+    /// #
+    /// # impl Node {
+    /// #   fn get_fit_score(&self) -> f64 {
+    /// #       self.models
+    /// #           .iter()
+    /// #           .max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap())
+    /// #           .unwrap()
+    /// #           .fit_score
+    /// #   }
+    /// # }
+    /// #
+    /// 
     /// impl GeneticNode for Node {
     /// #     fn initialize() -> Result<Box<Node>, Error> {
     /// #         Ok(Box::new(Node {
@@ -269,14 +213,6 @@ pub trait GeneticNode {
     /// #
     ///     //...
     ///
-    /// #    fn get_fit_score(&self) -> f64 {
-    /// #        self.models
-    /// #            .iter()
-    /// #            .max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap())
-    /// #            .unwrap()
-    /// #            .fit_score
-    /// #    }
-    /// #
     ///     fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     ///         self.models.sort_by(|a, b| a.fit_score.partial_cmp(&b.fit_score).unwrap().reverse());
     ///         self.models.truncate(3);
@@ -326,6 +262,16 @@ pub trait GeneticNode {
     ///     population_size: i64,
     ///     //...
     /// }
+    /// #
+    /// # impl Node {
+    /// #   fn get_fit_score(&self) -> f64 {
+    /// #       self.models
+    /// #           .iter()
+    /// #           .max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap())
+    /// #           .unwrap()
+    /// #           .fit_score
+    /// #   }
+    /// # }
     ///
     /// # impl Model {
     /// #     fn fit(&mut self, epochs: u64) -> Result<(), Error> {
@@ -363,14 +309,6 @@ pub trait GeneticNode {
     /// #         }
     /// #         Ok(())
     /// #     }
-    /// #
-    /// #    fn get_fit_score(&self) -> f64 {
-    /// #        self.models
-    /// #            .iter()
-    /// #            .max_by(|m1, m2| m1.fit_score.partial_cmp(&m2.fit_score).unwrap())
-    /// #            .unwrap()
-    /// #            .fit_score
-    /// #    }
     /// #
     /// #    fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #        self.models.sort_by(|a, b| a.fit_score.partial_cmp(&b.fit_score).unwrap().reverse());
@@ -458,10 +396,6 @@ where
     /// #       Ok(())
     /// #   }
     /// #
-    /// #   fn get_fit_score(&self) -> f64 {
-    /// #       self.fit_score
-    /// #   }
-    /// #
     /// #   fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
     /// #       Ok(())
     /// #   }
@@ -477,7 +411,7 @@ where
     ///
     /// # fn main() -> Result<(), Error> {
     /// let mut wrapped_node = GeneticNodeWrapper::<Node>::new()?;
-    /// assert_eq!(wrapped_node.data.unwrap().get_fit_score(), 0.0);
+    /// assert_eq!(wrapped_node.data.unwrap().fit_score, 0.0);
     /// # Ok(())
     /// # }
     /// ```
