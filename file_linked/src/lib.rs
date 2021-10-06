@@ -2,12 +2,12 @@
 
 extern crate serde;
 
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::PathBuf;
 use anyhow::Context;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -106,8 +106,11 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn new(val: T, path: &PathBuf) -> Result<FileLinked<T>, Error> {
-        let result = FileLinked { val, path: path.clone() };
+    pub fn new(val: T, path: &Path) -> Result<FileLinked<T>, Error> {
+        let result = FileLinked {
+            val,
+            path: path.to_path_buf(),
+        };
         result.write_data()?;
         Ok(result)
     }
@@ -279,14 +282,17 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_file(path: &PathBuf) -> Result<FileLinked<T>, Error> {
-        let file = File::open(path)
-            .with_context(|| format!("Unable to open file {}", path.display()))?;
+    pub fn from_file(path: &Path) -> Result<FileLinked<T>, Error> {
+        let file =
+            File::open(path).with_context(|| format!("Unable to open file {}", path.display()))?;
 
         let val = serde_json::from_reader(file)
             .with_context(|| String::from("Unable to parse value from file."))?;
 
-        Ok(FileLinked { val, path: path.clone() })
+        Ok(FileLinked {
+            val,
+            path: path.to_path_buf(),
+        })
     }
 }
 

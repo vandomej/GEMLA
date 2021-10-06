@@ -4,15 +4,17 @@
 pub mod genetic_node;
 
 use crate::error::Error;
-use crate::tree;
-use genetic_node::{GeneticNodeWrapper, GeneticNode};
+use crate::tree::Tree;
+use anyhow::anyhow;
 use file_linked::FileLinked;
+use genetic_node::{GeneticNode, GeneticNodeWrapper};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::path::PathBuf;
 use std::fs::File;
 use std::io::ErrorKind;
+use std::mem::replace;
+use std::path::Path;
 
 /// As the bracket tree increases in height, `IterationScaling` can be used to configure the number of iterations that
 /// a node runs for.
@@ -41,18 +43,71 @@ struct Bracket<T>
 where
     T: GeneticNode + Serialize,
 {
-    pub tree: tree::Tree<Option<GeneticNodeWrapper<T>>>,
+    tree: Option<Tree<Option<GeneticNodeWrapper<T>>>>,
     iteration_scaling: IterationScaling,
 }
 
 impl<T> Bracket<T>
-where T: GeneticNode + Serialize
+where
+    T: GeneticNode + Serialize + Debug,
 {
-    fn increase_height(&mut self, _amount: usize) -> Result<(), Error> {
+    fn build_empty_tree(size: usize) -> Tree<Option<GeneticNodeWrapper<T>>> {
+        if size <= 1 {
+            btree!(None)
+        } else {
+            btree!(
+                None,
+                Bracket::build_empty_tree(size - 1),
+                Bracket::build_empty_tree(size - 1)
+            )
+        }
+    }
+
+    fn increase_height(&mut self, amount: u64) {
+        for _ in 0..amount {
+            let height = self.tree.as_ref().unwrap().height();
+            let tree = replace(&mut self.tree, None);
+            drop(replace(
+                &mut self.tree,
+                Some(btree!(
+                    None,
+                    tree.unwrap(),
+                    Bracket::build_empty_tree(height as usize)
+                )),
+            ));
+        }
+    }
+
+    fn process_tree(tree: &mut Tree<Option<GeneticNodeWrapper<T>>>) -> Result<(), Error> {
+        if tree.val.is_none() {
+            match (&mut tree.left, &mut tree.right) {
+                (Some(l), Some(r)) => {
+                    Bracket::process_tree(&mut (*l))?;
+                    Bracket::process_tree(&mut (*r))?;
+
+                    let left_node = (*l).val.as_ref().unwrap().data.as_ref().unwrap();
+                    let right_node = (*r).val.as_ref().unwrap().data.as_ref().unwrap();
+                    let merged_node = GeneticNode::merge(left_node, right_node)?;
+
+                    tree.val = Some(GeneticNodeWrapper::from(*merged_node)?);
+                    tree.val.as_mut().unwrap().process_node(1)?;
+                }
+                (None, None) => {
+                    tree.val = Some(GeneticNodeWrapper::new()?);
+                    tree.val.as_mut().unwrap().process_node(1)?;
+                }
+                _ => {
+                    return Err(Error::Other(anyhow!("unable to process tree {:?}", tree)));
+                }
+            }
+        }
+
         Ok(())
     }
 
-    fn process_tree(&mut self) -> Result<(), Error> {
+    fn process(&mut self) -> Result<(), Error> {
+        Bracket::process_tree(self.tree.as_mut().unwrap())?;
+
         Ok(())
     }
 }
@@ -64,51 +119,52 @@ where T: GeneticNode + Serialize
 ///
 /// [`GeneticNode`]: genetic_node::GeneticNode
 pub struct Gemla<T>
-where T: GeneticNode + Serialize + DeserializeOwned
+where
+    T: GeneticNode + Serialize + DeserializeOwned,
 {
-    data: FileLinked<Bracket<T>>
+    data: FileLinked<Bracket<T>>,
 }
 
-impl<T> Gemla<T> 
+impl<T> Gemla<T>
 where
-    T: GeneticNode
-        + Serialize
-        + DeserializeOwned
-        + Default
+    T: GeneticNode + Serialize + DeserializeOwned + Default + Debug,
 {
-    pub fn new(path: &PathBuf, overwrite: bool) -> Result<Self, Error> {
+    pub fn new(path: &Path, overwrite: bool) -> Result<Self, Error> {
         match File::open(path) {
             Ok(file) => {
                 drop(file);
 
                 Ok(Gemla {
-                    data: 
-                        if overwrite {
-                            FileLinked::from_file(path)?
-                        } else {
-                            FileLinked::new(Bracket {
-                                tree: btree!(None),
-                                iteration_scaling: IterationScaling::default()
-                            }, path)?
-                        }
+                    data: if overwrite {
+                        FileLinked::from_file(path)?
+                    } else {
+                        FileLinked::new(
+                            Bracket {
+                                tree: Some(btree!(None)),
+                                iteration_scaling: IterationScaling::default(),
+                            },
+                            path,
+                        )?
+                    },
                 })
-            },
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                Ok(Gemla {
-                    data: FileLinked::new(Bracket {
-                        tree: btree!(None),
-                        iteration_scaling: IterationScaling::default()
-                    }, path)?
-                })
-            },
-            Err(error) => Err(Error::IO(error))
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
+                data: FileLinked::new(
+                    Bracket {
+                        tree: Some(btree!(None)),
+                        iteration_scaling: IterationScaling::default(),
+                    },
+                    path,
+                )?,
+            }),
+            Err(error) => Err(Error::IO(error)),
         }
     }
 
     pub fn simulate(&mut self, steps: u64) -> Result<(), Error> {
-        self.data.mutate(|b| b.increase_height(steps as usize))??;
+        self.data.mutate(|b| b.increase_height(steps))?;
 
-        self.data.mutate(|b| b.process_tree())??;
+        self.data.mutate(|b| b.process())??;
 
         Ok(())
     }

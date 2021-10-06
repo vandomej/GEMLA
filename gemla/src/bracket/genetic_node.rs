@@ -100,7 +100,7 @@ pub trait GeneticNode {
     /// #        Ok(())
     ///     }
     /// }
-    /// 
+    ///
     /// # impl Node {
     /// #   fn get_fit_score(&self) -> f64 {
     /// #       self.models
@@ -187,7 +187,7 @@ pub trait GeneticNode {
     /// #   }
     /// # }
     /// #
-    /// 
+    ///
     /// impl GeneticNode for Node {
     /// #     fn initialize() -> Result<Box<Node>, Error> {
     /// #         Ok(Box::new(Node {
@@ -424,6 +424,18 @@ where
 
         let new_data = T::initialize()?;
         node.data = Some(*new_data);
+        node.state = GeneticState::Simulate;
+
+        Ok(node)
+    }
+
+    pub fn from(data: T) -> Result<Self, Error> {
+        let mut node = GeneticNodeWrapper {
+            data: Some(data),
+            state: GeneticState::Initialize,
+            iteration: 0,
+        };
+
         node.state = GeneticState::Simulate;
 
         Ok(node)

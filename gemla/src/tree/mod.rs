@@ -131,7 +131,7 @@ impl<T> Tree<T> {
     ///         btree!("ab"));
     /// assert_eq!(t.height(), 3);
     /// ```
-    pub fn height(&self) -> u64 {
+    pub fn height(&self) -> usize {
         match (self.left.as_ref(), self.right.as_ref()) {
             (Some(l), Some(r)) => max(l.height(), r.height()) + 1,
             (Some(l), None) => l.height() + 1,
