@@ -1,7 +1,7 @@
 use gemla::bracket::genetic_node::GeneticNode;
 use gemla::error;
 use rand::prelude::*;
-use rand::{random, thread_rng};
+use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
@@ -10,15 +10,15 @@ const POPULATION_REDUCTION_SIZE: u64 = 3;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TestState {
-    pub population: Vec<f64>,
+    pub population: Vec<i64>,
 }
 
 impl Default for TestState {
     fn default() -> Self {
-        let mut population: Vec<f64> = vec![];
+        let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
-            population.push(random::<u64>() as f64)
+            population.push(thread_rng().gen_range(0..10000))
         }
 
         TestState { population }
@@ -27,10 +27,10 @@ impl Default for TestState {
 
 impl GeneticNode for TestState {
     fn initialize() -> Result<Box<Self>, error::Error> {
-        let mut population: Vec<f64> = vec![];
+        let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
-            population.push(random::<u64>() as f64)
+            population.push(thread_rng().gen_range(0..10000))
         }
 
         Ok(Box::new(TestState { population }))
@@ -44,26 +44,23 @@ impl GeneticNode for TestState {
                 .population
                 .clone()
                 .iter()
-                .map(|p| p + rng.gen_range(-10.0..10.0))
+                .map(|p| p + rng.gen_range(-10..10))
                 .collect()
         }
 
         Ok(())
     }
 
-    fn calculate_scores_and_trim(&mut self) -> Result<(), error::Error> {
+    fn mutate(&mut self) -> Result<(), error::Error> {
+        let mut rng = thread_rng();
+
         let mut v = self.population.clone();
 
-        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v.sort();
         v.reverse();
 
         self.population = v[0..(POPULATION_REDUCTION_SIZE as usize)].to_vec();
 
-        Ok(())
-    }
-
-    fn mutate(&mut self) -> Result<(), error::Error> {
-        let mut rng = thread_rng();
         loop {
             if self.population.len() >= POPULATION_SIZE.try_into().unwrap() {
                 break;
@@ -83,7 +80,7 @@ impl GeneticNode for TestState {
             let mut new_individual = self.population.clone()[new_individual_index];
             let cross_breed = self.population.clone()[cross_breed_index];
 
-            new_individual += cross_breed + rng.gen_range(-10.0..10.0);
+            new_individual += cross_breed + rng.gen_range(-10..10);
 
             self.population.push(new_individual);
         }
@@ -123,7 +120,7 @@ mod tests {
     #[test]
     fn test_simulate() {
         let mut state = TestState {
-            population: vec![1.0, 1.0, 2.0, 3.0],
+            population: vec![1, 1, 2, 3],
         };
 
         let original_population = state.population.clone();
@@ -135,33 +132,19 @@ mod tests {
         assert!(original_population
             .iter()
             .zip(state.population.iter())
-            .all(|(&a, &b)| b >= a - 10.0 && b <= a + 10.0));
+            .all(|(&a, &b)| b >= a - 10 && b <= a + 10));
 
         state.simulate(2).unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
-            .all(|(&a, &b)| b >= a - 30.0 && b <= a + 30.0))
-    }
-
-    #[test]
-    fn test_calculate_scores_and_trim() {
-        let mut state = TestState {
-            population: vec![4.0, 1.0, 1.0, 3.0, 2.0],
-        };
-
-        state.calculate_scores_and_trim().unwrap();
-
-        assert_eq!(state.population.len(), POPULATION_REDUCTION_SIZE as usize);
-        assert!(state.population.iter().any(|&x| x == 4.0));
-        assert!(state.population.iter().any(|&x| x == 3.0));
-        assert!(state.population.iter().any(|&x| x == 2.0));
+            .all(|(&a, &b)| b >= a - 30 && b <= a + 30))
     }
 
     #[test]
     fn test_mutate() {
         let mut state = TestState {
-            population: vec![4.0, 3.0, 3.0],
+            population: vec![4, 3, 3],
         };
 
         state.mutate().unwrap();
@@ -172,18 +155,18 @@ mod tests {
     #[test]
     fn test_merge() {
         let state1 = TestState {
-            population: vec![1.0, 2.0, 4.0, 5.0],
+            population: vec![1, 2, 4, 5],
         };
 
         let state2 = TestState {
-            population: vec![0.0, 1.0, 3.0, 7.0],
+            population: vec![0, 1, 3, 7],
         };
 
         let merged_state = TestState::merge(&state1, &state2).unwrap();
 
         assert_eq!(merged_state.population.len(), POPULATION_SIZE as usize);
-        assert!(merged_state.population.iter().any(|&x| x == 7.0));
-        assert!(merged_state.population.iter().any(|&x| x == 5.0));
-        assert!(merged_state.population.iter().any(|&x| x == 4.0));
+        assert!(merged_state.population.iter().any(|&x| x == 7));
+        assert!(merged_state.population.iter().any(|&x| x == 5));
+        assert!(merged_state.population.iter().any(|&x| x == 4));
     }
 }

@@ -136,8 +136,6 @@ where
 
                 Ok(Gemla {
                     data: if overwrite {
-                        FileLinked::from_file(path)?
-                    } else {
                         FileLinked::new(
                             Bracket {
                                 tree: Some(btree!(None)),
@@ -145,6 +143,8 @@ where
                             },
                             path,
                         )?
+                    } else {
+                        FileLinked::from_file(path)?
                     },
                 })
             }
@@ -193,10 +193,6 @@ mod tests {
     impl genetic_node::GeneticNode for TestState {
         fn simulate(&mut self, iterations: u64) -> Result<(), Error> {
             self.score += iterations as f64;
-            Ok(())
-        }
-
-        fn calculate_scores_and_trim(&mut self) -> Result<(), Error> {
             Ok(())
         }
 

@@ -23,8 +23,7 @@ fn main() -> anyhow::Result<()> {
     let file_path = matches.value_of(gemla::constants::args::FILE).unwrap();
     let mut gemla = Gemla::<TestState>::new(&PathBuf::from(file_path), true)?;
 
-    gemla.simulate(1)?;
-    gemla.simulate(1)?;
+    gemla.simulate(3)?;
     gemla.simulate(1)?;
 
     Ok(())
