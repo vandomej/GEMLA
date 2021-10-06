@@ -1,39 +1,50 @@
 use gemla::bracket::genetic_node::GeneticNode;
 use gemla::error;
 use rand::prelude::*;
-use rand::rngs::ThreadRng;
+use rand::{random, thread_rng};
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
 const POPULATION_SIZE: u64 = 5;
 const POPULATION_REDUCTION_SIZE: u64 = 3;
 
-struct TestState {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TestState {
     pub population: Vec<f64>,
-    thread_rng: ThreadRng,
+}
+
+impl Default for TestState {
+    fn default() -> Self {
+        let mut population: Vec<f64> = vec![];
+
+        for _ in 0..POPULATION_SIZE {
+            population.push(random::<u64>() as f64)
+        }
+
+        TestState { population }
+    }
 }
 
 impl GeneticNode for TestState {
     fn initialize() -> Result<Box<Self>, error::Error> {
-        let mut thread_rng = thread_rng();
         let mut population: Vec<f64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
-            population.push(thread_rng.gen::<u64>() as f64)
+            population.push(random::<u64>() as f64)
         }
 
-        Ok(Box::new(TestState {
-            population,
-            thread_rng,
-        }))
+        Ok(Box::new(TestState { population }))
     }
 
     fn simulate(&mut self, iterations: u64) -> Result<(), error::Error> {
+        let mut rng = thread_rng();
+
         for _ in 0..iterations {
             self.population = self
                 .population
                 .clone()
                 .iter()
-                .map(|p| p + self.thread_rng.gen_range(-10.0..10.0))
+                .map(|p| p + rng.gen_range(-10.0..10.0))
                 .collect()
         }
 
@@ -52,26 +63,27 @@ impl GeneticNode for TestState {
     }
 
     fn mutate(&mut self) -> Result<(), error::Error> {
+        let mut rng = thread_rng();
         loop {
             if self.population.len() >= POPULATION_SIZE.try_into().unwrap() {
                 break;
             }
 
-            let new_individual_index = self.thread_rng.gen_range(0..self.population.len());
-            let mut cross_breed_index = self.thread_rng.gen_range(0..self.population.len());
+            let new_individual_index = rng.gen_range(0..self.population.len());
+            let mut cross_breed_index = rng.gen_range(0..self.population.len());
 
             loop {
                 if new_individual_index != cross_breed_index {
                     break;
                 }
 
-                cross_breed_index = self.thread_rng.gen_range(0..self.population.len());
+                cross_breed_index = rng.gen_range(0..self.population.len());
             }
 
             let mut new_individual = self.population.clone()[new_individual_index];
             let cross_breed = self.population.clone()[cross_breed_index];
 
-            new_individual += cross_breed + self.thread_rng.gen_range(-10.0..10.0);
+            new_individual += cross_breed + rng.gen_range(-10.0..10.0);
 
             self.population.push(new_individual);
         }
@@ -88,10 +100,7 @@ impl GeneticNode for TestState {
 
         v = v[..(POPULATION_REDUCTION_SIZE as usize)].to_vec();
 
-        let mut result = TestState {
-            population: v,
-            thread_rng: thread_rng(),
-        };
+        let mut result = TestState { population: v };
 
         result.mutate()?;
 
@@ -114,7 +123,6 @@ mod tests {
     #[test]
     fn test_simulate() {
         let mut state = TestState {
-            thread_rng: thread_rng(),
             population: vec![1.0, 1.0, 2.0, 3.0],
         };
 
@@ -139,7 +147,6 @@ mod tests {
     #[test]
     fn test_calculate_scores_and_trim() {
         let mut state = TestState {
-            thread_rng: thread_rng(),
             population: vec![4.0, 1.0, 1.0, 3.0, 2.0],
         };
 
@@ -154,7 +161,6 @@ mod tests {
     #[test]
     fn test_mutate() {
         let mut state = TestState {
-            thread_rng: thread_rng(),
             population: vec![4.0, 3.0, 3.0],
         };
 
@@ -166,12 +172,10 @@ mod tests {
     #[test]
     fn test_merge() {
         let state1 = TestState {
-            thread_rng: thread_rng(),
             population: vec![1.0, 2.0, 4.0, 5.0],
         };
 
         let state2 = TestState {
-            thread_rng: thread_rng(),
             population: vec![0.0, 1.0, 3.0, 7.0],
         };
 
