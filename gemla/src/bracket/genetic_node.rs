@@ -6,12 +6,12 @@ use crate::error::Error;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::fmt::Debug;
 
 /// An enum used to control the state of a [`GeneticNode`]
 ///
 /// [`GeneticNode`]: crate::bracket::genetic_node
-#[derive(Clone, Debug, Serialize, Deserialize, Copy, PartialEq)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "enumType", content = "enumContent")]
 pub enum GeneticState {
     /// The node and it's data have not finished initializing
@@ -52,10 +52,8 @@ pub trait GeneticNode {
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GeneticNodeWrapper<T>
-where
-    T: GeneticNode,
 {
     pub data: Option<T>,
     state: GeneticState,
@@ -64,7 +62,7 @@ where
 
 impl<T> GeneticNodeWrapper<T>
 where
-    T: GeneticNode + fmt::Debug,
+    T: GeneticNode + Debug,
 {
     /// Initializes a wrapper around a GeneticNode. If the initialization is successful the internal state will be changed to
     /// `GeneticState::Simulate` otherwise it will remain as `GeneticState::Initialize` and will attempt to be created in
@@ -114,7 +112,7 @@ where
     pub fn process_node(&mut self, iterations: u64) -> Result<(), Error> {
         // Looping through each state transition until the number of iterations have been reached.
         loop {
-            match (self.state, &self.data) {
+            match (&self.state, &self.data) {
                 (GeneticState::Initialize, _) => {
                     self.iteration = 0;
                     let new_data = T::initialize()

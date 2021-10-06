@@ -13,18 +13,6 @@ pub struct TestState {
     pub population: Vec<i64>,
 }
 
-impl Default for TestState {
-    fn default() -> Self {
-        let mut population: Vec<i64> = vec![];
-
-        for _ in 0..POPULATION_SIZE {
-            population.push(thread_rng().gen_range(0..10000))
-        }
-
-        TestState { population }
-    }
-}
-
 impl GeneticNode for TestState {
     fn initialize() -> Result<Box<Self>, error::Error> {
         let mut population: Vec<i64> = vec![];
@@ -56,7 +44,7 @@ impl GeneticNode for TestState {
 
         let mut v = self.population.clone();
 
-        v.sort();
+        v.sort_unstable();
         v.reverse();
 
         self.population = v[0..(POPULATION_REDUCTION_SIZE as usize)].to_vec();

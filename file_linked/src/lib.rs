@@ -21,7 +21,7 @@ pub enum Error {
 }
 
 /// A wrapper around an object `T` that ties the object to a physical file
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct FileLinked<T>
 where
     T: Serialize,

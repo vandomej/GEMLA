@@ -22,7 +22,7 @@ use std::path::Path;
 /// # Examples
 ///
 /// TODO
-#[derive(Clone, Serialize, Deserialize, Copy, Debug, PartialEq)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "enumType", content = "enumContent")]
 pub enum IterationScaling {
     /// Scales the number of simulations linearly with the height of the  bracket tree given by `f(x) = mx` where
@@ -38,10 +38,8 @@ impl Default for IterationScaling {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Bracket<T>
-where
-    T: GeneticNode + Serialize,
 {
     tree: Option<Tree<Option<GeneticNodeWrapper<T>>>>,
     iteration_scaling: IterationScaling,
@@ -119,15 +117,14 @@ where
 ///
 /// [`GeneticNode`]: genetic_node::GeneticNode
 pub struct Gemla<T>
-where
-    T: GeneticNode + Serialize + DeserializeOwned,
+where T: Serialize
 {
     data: FileLinked<Bracket<T>>,
 }
 
 impl<T> Gemla<T>
 where
-    T: GeneticNode + Serialize + DeserializeOwned + Default + Debug,
+    T: GeneticNode + Serialize + DeserializeOwned + Debug,
 {
     pub fn new(path: &Path, overwrite: bool) -> Result<Self, Error> {
         match File::open(path) {
