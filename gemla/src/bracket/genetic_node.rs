@@ -53,8 +53,7 @@ pub trait GeneticNode {
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GeneticNodeWrapper<T>
-{
+pub struct GeneticNodeWrapper<T> {
     pub data: Option<T>,
     state: GeneticState,
     pub iteration: u64,
