@@ -30,7 +30,6 @@ impl GeneticNode for TestState {
         for _ in 0..iterations {
             self.population = self
                 .population
-                .clone()
                 .iter()
                 .map(|p| p + rng.gen_range(-10..10))
                 .collect()

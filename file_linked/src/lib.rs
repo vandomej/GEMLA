@@ -6,14 +6,13 @@ use anyhow::Context;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::File;
-use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    Serialization(serde_json::Error),
+    Serialization(bincode::Error),
     #[error(transparent)]
     IO(std::io::Error),
     #[error(transparent)]
@@ -116,15 +115,11 @@ where
     }
 
     fn write_data(&self) -> Result<(), Error> {
-        let mut file = File::create(&self.path)
+        let file = File::create(&self.path)
             .with_context(|| format!("Unable to open path {}", self.path.display()))?;
 
-        write!(
-            file,
-            "{}",
-            serde_json::to_string(&self.val).map_err(Error::Serialization)?
-        )
-        .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
+        bincode::serialize_into(file, &self.val)
+            .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
 
         Ok(())
     }
@@ -264,11 +259,7 @@ where
     ///        .open(&path)
     ///        .expect("Unable to create file");
     ///
-    /// write!(file, "{}", serde_json::to_string(&test)
-    ///     .expect("Unable to serialize object"))
-    ///     .expect("Unable to write file");
-    ///
-    /// drop(file);
+    /// bincode::serialize_into(file, &test).expect("Unable to serialize object");
     ///
     /// let mut linked_test = FileLinked::<Test>::from_file(&path)
     ///     .expect("Unable to create file linked object");
@@ -286,7 +277,7 @@ where
         let file =
             File::open(path).with_context(|| format!("Unable to open file {}", path.display()))?;
 
-        let val = serde_json::from_reader(file)
+        let val = bincode::deserialize_from(file)
             .with_context(|| String::from("Unable to parse value from file."))?;
 
         Ok(FileLinked {
