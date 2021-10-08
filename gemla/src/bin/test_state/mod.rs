@@ -1,4 +1,4 @@
-use gemla::bracket::genetic_node::GeneticNode;
+use gemla::core::genetic_node::GeneticNode;
 use gemla::error;
 use rand::prelude::*;
 use rand::thread_rng;
@@ -18,22 +18,20 @@ impl GeneticNode for TestState {
         let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
-            population.push(thread_rng().gen_range(0..10000))
+            population.push(thread_rng().gen_range(0..100))
         }
 
         Ok(Box::new(TestState { population }))
     }
 
-    fn simulate(&mut self, iterations: u64) -> Result<(), error::Error> {
+    fn simulate(&mut self) -> Result<(), error::Error> {
         let mut rng = thread_rng();
 
-        for _ in 0..iterations {
-            self.population = self
-                .population
-                .iter()
-                .map(|p| p + rng.gen_range(-10..10))
-                .collect()
-        }
+        self.population = self
+            .population
+            .iter()
+            .map(|p| p.saturating_add(rng.gen_range(-1..2)))
+            .collect();
 
         Ok(())
     }
@@ -67,7 +65,8 @@ impl GeneticNode for TestState {
             let mut new_individual = self.population.clone()[new_individual_index];
             let cross_breed = self.population.clone()[cross_breed_index];
 
-            new_individual += cross_breed + rng.gen_range(-10..10);
+            new_individual = (new_individual.saturating_add(cross_breed) / 2)
+                .saturating_add(rng.gen_range(-1..2));
 
             self.population.push(new_individual);
         }
@@ -95,7 +94,7 @@ impl GeneticNode for TestState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gemla::bracket::genetic_node::GeneticNode;
+    use gemla::core::genetic_node::GeneticNode;
 
     #[test]
     fn test_initialize() {
@@ -112,20 +111,18 @@ mod tests {
 
         let original_population = state.population.clone();
 
-        state.simulate(0).unwrap();
-        assert_eq!(original_population, state.population);
-
-        state.simulate(1).unwrap();
+        state.simulate().unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
-            .all(|(&a, &b)| b >= a - 10 && b <= a + 10));
+            .all(|(&a, &b)| b >= a - 1 && b <= a + 2));
 
-        state.simulate(2).unwrap();
+        state.simulate().unwrap();
+        state.simulate().unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
-            .all(|(&a, &b)| b >= a - 30 && b <= a + 30))
+            .all(|(&a, &b)| b >= a - 3 && b <= a + 6))
     }
 
     #[test]
