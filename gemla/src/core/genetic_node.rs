@@ -12,7 +12,6 @@ use std::fmt::Debug;
 ///
 /// [`GeneticNode`]: crate::bracket::genetic_node
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Copy)]
-#[serde(tag = "enumType", content = "enumContent")]
 pub enum GeneticState {
     /// The node and it's data have not finished initializing
     Initialize,

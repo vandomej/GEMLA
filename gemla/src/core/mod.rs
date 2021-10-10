@@ -10,11 +10,13 @@ use file_linked::FileLinked;
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use log::{info, trace};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::ErrorKind;
 use std::mem::swap;
 use std::path::Path;
+use std::time::Instant;
 
 type SimulationTree<T> = Tree<GeneticNodeWrapper<T>>;
 
@@ -65,8 +67,12 @@ where
         self.data
             .mutate(|(d, c)| Gemla::increase_height(d, c, steps))??;
 
+        info!("Height of simulation tree increased to {}", self.data.readonly().0.as_ref().unwrap().height());
+
         self.data
             .mutate(|(d, _c)| Gemla::process_tree(d.as_mut().unwrap()))??;
+
+        info!("Processed tree");
 
         Ok(())
     }
@@ -130,11 +136,20 @@ where
     }
 
     fn process_node(node: &mut GeneticNodeWrapper<T>) -> Result<(), Error> {
+        let node_time = Instant::now();
+
         loop {
+            let node_state_time = Instant::now();
+            let node_state = node.state().clone();
+
             if node.process_node()? == GeneticState::Finish {
                 break;
             }
+
+            trace!("{:?} completed in {:?}", node_state, node_state_time.elapsed());
         }
+
+        info!("Processed node in {:?}", node_time.elapsed());
 
         Ok(())
     }

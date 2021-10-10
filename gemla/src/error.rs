@@ -1,4 +1,5 @@
 use thiserror::Error;
+use log::error;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -24,3 +25,11 @@ impl From<std::io::Error> for Error {
         Error::IO(error)
     }
 }
+
+pub fn log_error<T>(result: Result<T, Error>) -> Result<T, Error> {
+    result.map_err(|e| {
+        error!("{}", e);
+        e
+    })
+}
+
