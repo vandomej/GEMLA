@@ -8,9 +8,9 @@ use crate::tree::Tree;
 use anyhow::anyhow;
 use file_linked::FileLinked;
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
+use log::{info, trace};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use log::{info, trace};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::ErrorKind;
@@ -67,7 +67,10 @@ where
         self.data
             .mutate(|(d, c)| Gemla::increase_height(d, c, steps))??;
 
-        info!("Height of simulation tree increased to {}", self.data.readonly().0.as_ref().unwrap().height());
+        info!(
+            "Height of simulation tree increased to {}",
+            self.data.readonly().0.as_ref().unwrap().height()
+        );
 
         self.data
             .mutate(|(d, _c)| Gemla::process_tree(d.as_mut().unwrap()))??;
@@ -146,7 +149,11 @@ where
                 break;
             }
 
-            trace!("{:?} completed in {:?}", node_state, node_state_time.elapsed());
+            trace!(
+                "{:?} completed in {:?}",
+                node_state,
+                node_state_time.elapsed()
+            );
         }
 
         info!("Processed node in {:?}", node_time.elapsed());

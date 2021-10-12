@@ -10,8 +10,8 @@ use clap::App;
 use gemla::core::{Gemla, GemlaConfig};
 use gemla::error::log_error;
 use std::path::PathBuf;
-use test_state::TestState;
 use std::time::Instant;
+use test_state::TestState;
 // use std::io::Write;
 
 /// Runs a simluation of a genetic algorithm against a dataset.
@@ -21,7 +21,7 @@ use std::time::Instant;
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     info!("Starting");
-    
+
     let now = Instant::now();
 
     // Command line arguments are parsed with the clap crate. And this program uses

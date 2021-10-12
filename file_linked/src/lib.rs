@@ -1,23 +1,15 @@
 //! A wrapper around an object that ties it to a physical file
 
-extern crate serde;
+pub mod error;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
+use error::Error;
+use log::info;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::fs::File;
+use std::fs::{copy, remove_file, File};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error(transparent)]
-    Serialization(bincode::Error),
-    #[error(transparent)]
-    IO(std::io::Error),
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
 
 /// A wrapper around an object `T` that ties the object to a physical file
 #[derive(Debug)]
@@ -27,6 +19,7 @@ where
 {
     val: T,
     path: PathBuf,
+    temp_file_path: PathBuf,
 }
 
 impl<T> FileLinked<T>
@@ -106,20 +99,56 @@ where
     /// # }
     /// ```
     pub fn new(val: T, path: &Path) -> Result<FileLinked<T>, Error> {
+        let mut temp_file_path = path.to_path_buf();
+        temp_file_path.set_file_name(format!(
+            ".temp{}",
+            path.file_name()
+                .ok_or_else(|| anyhow!("Unable to get filename for tempfile {}", path.display()))?
+                .to_str()
+                .ok_or_else(|| anyhow!("Unable to get filename for tempfile {}", path.display()))?
+        ));
+
         let result = FileLinked {
             val,
             path: path.to_path_buf(),
+            temp_file_path,
         };
+
         result.write_data()?;
         Ok(result)
     }
 
     fn write_data(&self) -> Result<(), Error> {
-        let file = File::create(&self.path)
-            .with_context(|| format!("Unable to open path {}", self.path.display()))?;
+        match File::open(&self.path) {
+            Ok(_) => {
+                copy(&self.path, &self.temp_file_path).with_context(|| {
+                    format!(
+                        "Unable to copy temp file from {} to {}",
+                        self.path.display(),
+                        self.temp_file_path.display()
+                    )
+                })?;
 
-        bincode::serialize_into(file, &self.val)
-            .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
+                let file = File::create(&self.path)?;
+
+                bincode::serialize_into(file, &self.val)
+                    .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
+
+                remove_file(&self.temp_file_path).with_context(|| {
+                    format!(
+                        "Unable to remove temp file {}",
+                        self.temp_file_path.display()
+                    )
+                })?;
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                let file = File::create(&self.path)?;
+
+                bincode::serialize_into(file, &self.val)
+                    .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
+            }
+            Err(error) => return Err(Error::IO(error)),
+        }
 
         Ok(())
     }
@@ -130,6 +159,7 @@ where
     /// # Examples
     /// ```
     /// # use file_linked::*;
+    /// # use file_linked::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -176,6 +206,7 @@ where
     /// # Examples
     /// ```
     /// # use file_linked::*;
+    /// # use file_linked::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -229,6 +260,7 @@ where
     /// # Examples
     /// ```
     /// # use file_linked::*;
+    /// # use file_linked::error::Error;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -274,16 +306,64 @@ where
     /// # }
     /// ```
     pub fn from_file(path: &Path) -> Result<FileLinked<T>, Error> {
-        let file =
-            File::open(path).with_context(|| format!("Unable to open file {}", path.display()))?;
+        let mut temp_file_path = path.to_path_buf();
+        temp_file_path.set_file_name(format!(
+            ".temp{}",
+            path.file_name()
+                .ok_or_else(|| anyhow!("Unable to get filename for tempfile {}", path.display()))?
+                .to_str()
+                .ok_or_else(|| anyhow!("Unable to get filename for tempfile {}", path.display()))?
+        ));
 
-        let val = bincode::deserialize_from(file)
-            .with_context(|| String::from("Unable to parse value from file."))?;
+        match File::open(path).map_err(Error::from).and_then(|file| {
+            bincode::deserialize_from::<std::fs::File, T>(file)
+                .with_context(|| format!("Unable to deserialize file {}", path.display()))
+                .map_err(Error::from)
+        }) {
+            Ok(val) => Ok(FileLinked {
+                val,
+                path: path.to_path_buf(),
+                temp_file_path,
+            }),
+            Err(err) => {
+                info!(
+                    "Unable to read/deserialize file {} attempting to open temp file {}",
+                    path.display(),
+                    temp_file_path.display()
+                );
 
-        Ok(FileLinked {
-            val,
-            path: path.to_path_buf(),
-        })
+                // Try to use temp file instead and see if that file exists and is serializable
+                let val = FileLinked::from_temp_file(&temp_file_path, path)
+                    .map_err(|_| err)
+                    .with_context(|| format!("Failed to read/deserialize the object from the file {} and temp file {}", path.display(), temp_file_path.display()))?;
+
+                Ok(FileLinked {
+                    val,
+                    path: path.to_path_buf(),
+                    temp_file_path,
+                })
+            }
+        }
+    }
+
+    fn from_temp_file(temp_file_path: &Path, path: &Path) -> Result<T, Error> {
+        let file = File::open(temp_file_path)
+            .with_context(|| format!("Unable to open file {}", temp_file_path.display()))?;
+
+        let val = bincode::deserialize_from(file).with_context(|| {
+            format!(
+                "Could not deserialize from temp file {}",
+                temp_file_path.display()
+            )
+        })?;
+
+        info!("Successfully deserialized value from temp file");
+
+        copy(temp_file_path, path)?;
+        remove_file(temp_file_path)
+            .with_context(|| format!("Unable to remove temp file {}", temp_file_path.display()))?;
+
+        Ok(val)
     }
 }
 
