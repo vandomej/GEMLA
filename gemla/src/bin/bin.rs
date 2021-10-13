@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
         &PathBuf::from(file_path),
         GemlaConfig {
             generations_per_node: 10,
-            overwrite: true,
+            overwrite: false,
         },
     ))?;
 

@@ -72,10 +72,15 @@ where
             self.data.readonly().0.as_ref().unwrap().height()
         );
 
-        self.data
-            .mutate(|(d, _c)| Gemla::process_tree(d.as_mut().unwrap()))??;
+        loop {
+            if Gemla::tree_processed(self.data.readonly().0.as_ref().unwrap())? {
+                info!("Processed tree");
+                break;
+            }
 
-        info!("Processed tree");
+            self.data
+                .mutate(|(d, _)| Gemla::process_tree(d.as_mut().unwrap()))??;
+        }
 
         Ok(())
     }
@@ -110,13 +115,31 @@ where
         Ok(())
     }
 
+    fn tree_processed(tree: &SimulationTree<T>) -> Result<bool, Error> {
+        if tree.val.state() == &GeneticState::Finish {
+            match (&tree.left, &tree.right) {
+                (Some(l), Some(r)) => Ok(Gemla::tree_processed(l)? && Gemla::tree_processed(r)?),
+                (None, None) => Ok(true),
+                _ => Err(Error::Other(anyhow!("unable to process tree {:?}", tree))),
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
     fn process_tree(tree: &mut SimulationTree<T>) -> Result<(), Error> {
         if tree.val.state() == &GeneticState::Initialize {
             match (&mut tree.left, &mut tree.right) {
-                (Some(l), Some(r)) => {
+                (Some(l), _) if l.val.state() != &GeneticState::Finish => {
                     Gemla::process_tree(&mut (*l))?;
+                }
+                (_, Some(r)) if r.val.state() != &GeneticState::Finish => {
                     Gemla::process_tree(&mut (*r))?;
-
+                }
+                (Some(l), Some(r))
+                    if r.val.state() == &GeneticState::Finish
+                        && l.val.state() == &GeneticState::Finish =>
+                {
                     let left_node = (*l).val.node.as_ref().unwrap();
                     let right_node = (*r).val.node.as_ref().unwrap();
                     let merged_node = GeneticNode::merge(left_node, right_node)?;
@@ -131,7 +154,7 @@ where
                     return Err(Error::Other(anyhow!("unable to process tree {:?}", tree)));
                 }
             }
-        } else {
+        } else if tree.val.state() != &GeneticState::Finish {
             Gemla::process_node(&mut tree.val)?;
         }
 
@@ -139,24 +162,20 @@ where
     }
 
     fn process_node(node: &mut GeneticNodeWrapper<T>) -> Result<(), Error> {
-        let node_time = Instant::now();
+        let node_state_time = Instant::now();
+        let node_state = *node.state();
 
-        loop {
-            let node_state_time = Instant::now();
-            let node_state = node.state().clone();
+        node.process_node()?;
 
-            if node.process_node()? == GeneticState::Finish {
-                break;
-            }
+        trace!(
+            "{:?} completed in {:?} for",
+            node_state,
+            node_state_time.elapsed()
+        );
 
-            trace!(
-                "{:?} completed in {:?}",
-                node_state,
-                node_state_time.elapsed()
-            );
+        if node.state() == &GeneticState::Finish {
+            info!("Processed node");
         }
-
-        info!("Processed node in {:?}", node_time.elapsed());
 
         Ok(())
     }

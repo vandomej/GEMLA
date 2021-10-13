@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::fs::{copy, remove_file, File};
 use std::io::ErrorKind;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// A wrapper around an object `T` that ties the object to a physical file
@@ -20,6 +21,19 @@ where
     val: T,
     path: PathBuf,
     temp_file_path: PathBuf,
+    file_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl<T> Drop for FileLinked<T> 
+where T: Serialize
+{
+    fn drop(&mut self) {
+        if self.file_thread.is_some()
+        {
+            let file_thread = self.file_thread.take();
+            file_thread.unwrap().join().expect("Error cleaning up file thread for file_linked object");
+        }
+    }
 }
 
 impl<T> FileLinked<T>
@@ -108,44 +122,52 @@ where
                 .ok_or_else(|| anyhow!("Unable to get filename for tempfile {}", path.display()))?
         ));
 
-        let result = FileLinked {
+        let mut result = FileLinked {
             val,
             path: path.to_path_buf(),
             temp_file_path,
+            file_thread: None,
         };
 
         result.write_data()?;
         Ok(result)
     }
 
-    fn write_data(&self) -> Result<(), Error> {
+    fn write_data(&mut self) -> Result<(), Error> {
+        let thread_path = self.path.clone();
+        let thread_temp_path = self.temp_file_path.clone();
+        let thread_val = bincode::serialize(&self.val)
+            .with_context(|| "Unable to serialize object into bincode".to_string())?;
+        if self.file_thread.is_some() {
+            let file_thread = self.file_thread.take();
+            file_thread.unwrap().join().expect("Unable to join thread");
+        }
+
         match File::open(&self.path) {
             Ok(_) => {
-                copy(&self.path, &self.temp_file_path).with_context(|| {
-                    format!(
-                        "Unable to copy temp file from {} to {}",
-                        self.path.display(),
-                        self.temp_file_path.display()
-                    )
-                })?;
 
-                let file = File::create(&self.path)?;
+                let handle = std::thread::spawn(move || {
+                    copy(&thread_path, &thread_temp_path).expect("Error copying temp file");
 
-                bincode::serialize_into(file, &self.val)
-                    .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
+                    let mut file = File::create(&thread_path).expect("Error creating file handle");
 
-                remove_file(&self.temp_file_path).with_context(|| {
-                    format!(
-                        "Unable to remove temp file {}",
-                        self.temp_file_path.display()
-                    )
-                })?;
+                    file.write_all(thread_val.as_slice())
+                        .expect("Failed to write data to file");
+
+                    remove_file(&thread_temp_path).expect("Error removing temp file");
+                });
+
+                self.file_thread = Some(handle);
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
-                let file = File::create(&self.path)?;
+                let handle = std::thread::spawn(move || {
+                    let mut file = File::create(&thread_path).expect("Error creating file handle");
 
-                bincode::serialize_into(file, &self.val)
-                    .with_context(|| format!("Unable to write to file {}", self.path.display()))?;
+                    file.write_all(thread_val.as_slice())
+                        .expect("Failed to write data to file");
+                });
+
+                self.file_thread = Some(handle);
             }
             Err(error) => return Err(Error::IO(error)),
         }
@@ -324,6 +346,7 @@ where
                 val,
                 path: path.to_path_buf(),
                 temp_file_path,
+                file_thread: None,
             }),
             Err(err) => {
                 info!(
@@ -341,6 +364,7 @@ where
                     val,
                     path: path.to_path_buf(),
                     temp_file_path,
+                    file_thread: None,
                 })
             }
         }
