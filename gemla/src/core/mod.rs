@@ -8,7 +8,7 @@ use crate::tree::Tree;
 use anyhow::anyhow;
 use file_linked::FileLinked;
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
-use log::{info, trace};
+use log::{info, trace, warn};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -32,16 +32,20 @@ pub struct GemlaConfig {
 /// individuals.
 ///
 /// [`GeneticNode`]: genetic_node::GeneticNode
-pub struct Gemla<T>
+pub struct Gemla<'a, T>
 where
-    T: Serialize,
+    T: Serialize + Clone,
 {
     pub data: FileLinked<(Option<SimulationTree<T>>, GemlaConfig)>,
+    threads: std::collections::HashMap<
+        uuid::Uuid,
+        futures::prelude::future::BoxFuture<'a, Result<GeneticNodeWrapper<T>, Error>>,
+    >,
 }
 
-impl<T> Gemla<T>
+impl<'a, T: 'a> Gemla<'a, T>
 where
-    T: GeneticNode + Serialize + DeserializeOwned + Debug,
+    T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + std::marker::Send,
 {
     pub fn new(path: &Path, config: GemlaConfig) -> Result<Self, Error> {
         match File::open(path) {
@@ -54,16 +58,18 @@ where
                     } else {
                         FileLinked::from_file(path)?
                     },
+                    threads: std::collections::HashMap::new(),
                 })
             }
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
                 data: FileLinked::new((None, config), path)?,
+                threads: std::collections::HashMap::new(),
             }),
             Err(error) => Err(Error::IO(error)),
         }
     }
 
-    pub fn simulate(&mut self, steps: u64) -> Result<(), Error> {
+    pub async fn simulate(&mut self, steps: u64) -> Result<(), Error> {
         self.data
             .mutate(|(d, c)| Gemla::increase_height(d, c, steps))??;
 
@@ -74,15 +80,166 @@ where
 
         loop {
             if Gemla::tree_processed(self.data.readonly().0.as_ref().unwrap())? {
+                self.join_threads().await?;
+
                 info!("Processed tree");
                 break;
             }
 
-            self.data
-                .mutate(|(d, _)| Gemla::process_tree(d.as_mut().unwrap()))??;
+            let node_to_process = self.find_process_node();
+
+            if let Some(node) = node_to_process {
+                trace!("Adding node to process list {}", node.get_id());
+
+                // if self.threads.len() > 5 {
+                //     self.join_threads().await?;
+                // } else {
+                    self.threads
+                        .insert(node.get_id(), Box::pin(Gemla::process_node(node)));
+                // }
+            } else {
+                trace!("No node found to process, joining threads");
+
+                self.join_threads().await?;
+            }
         }
 
         Ok(())
+    }
+
+    async fn join_threads(&mut self) -> Result<(), Error> {
+        if self.threads.len() > 0 {
+            trace!("Joining threads for nodes {:?}", self.threads.keys());
+    
+            let results = futures::future::join_all(self.threads.values_mut()).await;
+            let reduced_results: Result<Vec<GeneticNodeWrapper<T>>, Error> =
+                results.into_iter().collect();
+    
+            self.threads.clear();
+    
+            reduced_results.and_then(|r| {
+                if !self
+                    .data
+                    .mutate(|(d, _)| Gemla::replace_nodes(d.as_mut().unwrap(), r))?
+                {
+                    warn!("Unable to find nodes to replace in tree")
+                }
+    
+                self.data
+                    .mutate(|(d, _)| Gemla::merge_completed_nodes(d.as_mut().unwrap()))??;
+    
+                Ok(())
+            })?;
+    
+        }
+
+        Ok(())
+    }
+
+    fn merge_completed_nodes(tree: &mut SimulationTree<T>) -> Result<(), Error> {
+        if tree.val.state() == &GeneticState::Initialize {
+            match (&mut tree.left, &mut tree.right) {
+                (Some(l), Some(r))
+                    if l.val.state() == &GeneticState::Finish
+                        && r.val.state() == &GeneticState::Finish =>
+                {
+                    info!("Merging nodes {} and {}", l.val.get_id(), r.val.get_id());
+
+                    let left_node = l.val.node.as_ref().unwrap();
+                    let right_node = r.val.node.as_ref().unwrap();
+                    let merged_node = GeneticNode::merge(left_node, right_node)?;
+                    tree.val = GeneticNodeWrapper::from(
+                        *merged_node,
+                        tree.val.total_generations,
+                        tree.val.get_id(),
+                    );
+                }
+                (Some(l), Some(r)) => {
+                    Gemla::merge_completed_nodes(l)?;
+                    Gemla::merge_completed_nodes(r)?;
+                }
+                (Some(l), None) if l.val.state() == &GeneticState::Finish => {
+                    trace!("Copying node {}", l.val.get_id());
+
+                    let left_node = l.val.clone();
+                    tree.val = GeneticNodeWrapper::from(
+                        left_node.node.unwrap(),
+                        tree.val.total_generations,
+                        tree.val.get_id(),
+                    );
+                }
+                (Some(l), None) => Gemla::merge_completed_nodes(l)?,
+                (None, Some(r)) if r.val.state() == &GeneticState::Finish => {
+                    trace!("Copying node {}", r.val.get_id());
+
+                    let right_node = r.val.clone();
+                    tree.val = GeneticNodeWrapper::from(
+                        right_node.node.unwrap(),
+                        tree.val.total_generations,
+                        tree.val.get_id(),
+                    );
+                }
+                (None, Some(r)) => Gemla::merge_completed_nodes(r)?,
+                (_, _) => (),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn find_process_node_helper(&self, tree: &SimulationTree<T>) -> Option<GeneticNodeWrapper<T>> {
+        if tree.val.state() != &GeneticState::Finish
+            && !self.threads.contains_key(&tree.val.get_id())
+        {
+            match (&tree.left, &tree.right) {
+                (Some(l), Some(r))
+                    if l.val.state() == &GeneticState::Finish
+                        && r.val.state() == &GeneticState::Finish =>
+                {
+                    Some(tree.val.clone())
+                }
+                (Some(l), Some(r)) => self
+                    .find_process_node_helper(&*l)
+                    .or_else(|| self.find_process_node_helper(&*r)),
+                (Some(l), None) => self.find_process_node_helper(&*l),
+                (None, Some(r)) => self.find_process_node_helper(&*r),
+                (None, None) => Some(tree.val.clone()),
+            }
+        } else {
+            None
+        }
+    }
+
+    fn find_process_node(&self) -> Option<GeneticNodeWrapper<T>> {
+        let tree = self.data.readonly().0.as_ref();
+        tree.and_then(|t| self.find_process_node_helper(&t))
+    }
+
+    fn replace_node(
+        tree: &mut SimulationTree<T>,
+        node: GeneticNodeWrapper<T>,
+    ) -> Option<GeneticNodeWrapper<T>> {
+        if tree.val.get_id() == node.get_id() {
+            tree.val = node;
+            None
+        } else {
+            match (&mut tree.left, &mut tree.right) {
+                (Some(l), Some(r)) => {
+                    Gemla::replace_node(l, node).and_then(|n| Gemla::replace_node(r, n))
+                }
+                (Some(l), None) => Gemla::replace_node(l, node),
+                (None, Some(r)) => Gemla::replace_node(r, node),
+                _ => Some(node),
+            }
+        }
+    }
+
+    fn replace_nodes(tree: &mut SimulationTree<T>, nodes: Vec<GeneticNodeWrapper<T>>) -> bool {
+        nodes
+            .into_iter()
+            .map(|n| Gemla::replace_node(tree, n).is_none())
+            .reduce(|a, b| a && b)
+            .unwrap_or(false)
     }
 
     fn increase_height(
@@ -127,57 +284,24 @@ where
         }
     }
 
-    fn process_tree(tree: &mut SimulationTree<T>) -> Result<(), Error> {
-        if tree.val.state() == &GeneticState::Initialize {
-            match (&mut tree.left, &mut tree.right) {
-                (Some(l), _) if l.val.state() != &GeneticState::Finish => {
-                    Gemla::process_tree(&mut (*l))?;
-                }
-                (_, Some(r)) if r.val.state() != &GeneticState::Finish => {
-                    Gemla::process_tree(&mut (*r))?;
-                }
-                (Some(l), Some(r))
-                    if r.val.state() == &GeneticState::Finish
-                        && l.val.state() == &GeneticState::Finish =>
-                {
-                    let left_node = (*l).val.node.as_ref().unwrap();
-                    let right_node = (*r).val.node.as_ref().unwrap();
-                    let merged_node = GeneticNode::merge(left_node, right_node)?;
-
-                    tree.val = GeneticNodeWrapper::from(*merged_node, tree.val.total_generations);
-                    Gemla::process_node(&mut tree.val)?;
-                }
-                (None, None) => {
-                    Gemla::process_node(&mut tree.val)?;
-                }
-                _ => {
-                    return Err(Error::Other(anyhow!("unable to process tree {:?}", tree)));
-                }
-            }
-        } else if tree.val.state() != &GeneticState::Finish {
-            Gemla::process_node(&mut tree.val)?;
-        }
-
-        Ok(())
-    }
-
-    fn process_node(node: &mut GeneticNodeWrapper<T>) -> Result<(), Error> {
+    async fn process_node(mut node: GeneticNodeWrapper<T>) -> Result<GeneticNodeWrapper<T>, Error> {
         let node_state_time = Instant::now();
         let node_state = *node.state();
 
         node.process_node()?;
 
         trace!(
-            "{:?} completed in {:?} for",
+            "{:?} completed in {:?} for {}",
             node_state,
-            node_state_time.elapsed()
+            node_state_time.elapsed(),
+            node.get_id()
         );
 
         if node.state() == &GeneticState::Finish {
-            info!("Processed node");
+            info!("Processed node {}", node.get_id());
         }
 
-        Ok(())
+        Ok(node)
     }
 }
 

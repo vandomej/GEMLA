@@ -8,7 +8,7 @@ use std::convert::TryInto;
 const POPULATION_SIZE: u64 = 5;
 const POPULATION_REDUCTION_SIZE: u64 = 3;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TestState {
     pub population: Vec<i64>,
 }

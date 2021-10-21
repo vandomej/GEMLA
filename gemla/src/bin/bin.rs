@@ -18,7 +18,8 @@ use test_state::TestState;
 ///
 /// Use the -h, --h, or --help flag to see usage syntax.
 /// TODO
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     env_logger::init();
     info!("Starting");
 
@@ -34,12 +35,12 @@ fn main() -> anyhow::Result<()> {
     let mut gemla = log_error(Gemla::<TestState>::new(
         &PathBuf::from(file_path),
         GemlaConfig {
-            generations_per_node: 10,
+            generations_per_node: 1,
             overwrite: false,
         },
     ))?;
 
-    log_error(gemla.simulate(10))?;
+    log_error(gemla.simulate(100).await)?;
 
     // let mut f = std::fs::File::create("./test")?;
     // write!(f, "{}", serde_json::to_string(&gemla.data.readonly().0)?)?;

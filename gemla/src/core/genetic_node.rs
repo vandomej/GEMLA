@@ -46,33 +46,43 @@ pub trait GeneticNode {
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GeneticNodeWrapper<T> {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GeneticNodeWrapper<T>
+where
+    T: Clone,
+{
     pub node: Option<T>,
     state: GeneticState,
     generation: u64,
     pub total_generations: u64,
+    id: uuid::Uuid,
 }
 
 impl<T> GeneticNodeWrapper<T>
 where
-    T: GeneticNode + Debug,
+    T: GeneticNode + Debug + Clone,
 {
+    pub fn get_id(&self) -> uuid::Uuid {
+        self.id
+    }
+
     pub fn new(total_generations: u64) -> Self {
         GeneticNodeWrapper {
             node: None,
             state: GeneticState::Initialize,
             generation: 0,
             total_generations,
+            id: uuid::Uuid::new_v4(),
         }
     }
 
-    pub fn from(data: T, total_generations: u64) -> Self {
+    pub fn from(data: T, total_generations: u64, id: uuid::Uuid) -> Self {
         GeneticNodeWrapper {
             node: Some(data),
             state: GeneticState::Simulate,
             generation: 0,
             total_generations,
+            id,
         }
     }
 
