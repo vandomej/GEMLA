@@ -18,32 +18,51 @@ use test_state::TestState;
 ///
 /// Use the -h, --h, or --help flag to see usage syntax.
 /// TODO
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
     info!("Starting");
 
     let now = Instant::now();
 
-    // Command line arguments are parsed with the clap crate. And this program uses
-    // the yaml method with clap.
-    let yaml = load_yaml!("../../cli.yml");
-    let matches = App::from_yaml(yaml).get_matches();
+    // Obtainning number of threads to use
+    let num_threads = num_cpus::get().max(1);
+    let ex = smol::Executor::new();
+    let (signal, shutdown) = smol::channel::unbounded::<()>();
 
-    // Checking that the first argument <DIRECTORY> is a valid directory
-    let file_path = matches.value_of(gemla::constants::args::FILE).unwrap();
-    let mut gemla = log_error(Gemla::<TestState>::new(
-        &PathBuf::from(file_path),
-        GemlaConfig {
-            generations_per_node: 1,
-            overwrite: false,
-        },
-    ))?;
+    // Create an executor thread pool.
+    let (_, result): (
+        Vec<Result<(), smol::channel::RecvError>>,
+        Result<(), gemla::error::Error>,
+    ) = easy_parallel::Parallel::new()
+        .each(0..num_threads, |_| {
+            smol::future::block_on(ex.run(shutdown.recv()))
+        })
+        .finish(|| {
+            smol::block_on(async {
+                drop(signal);
 
-    log_error(gemla.simulate(100).await)?;
+                // Command line arguments are parsed with the clap crate. And this program uses
+                // the yaml method with clap.
+                let yaml = load_yaml!("../../cli.yml");
+                let matches = App::from_yaml(yaml).get_matches();
 
-    // let mut f = std::fs::File::create("./test")?;
-    // write!(f, "{}", serde_json::to_string(&gemla.data.readonly().0)?)?;
+                // Checking that the first argument <DIRECTORY> is a valid directory
+                let file_path = matches.value_of(gemla::constants::args::FILE).unwrap();
+                let mut gemla = log_error(Gemla::<TestState>::new(
+                    &PathBuf::from(file_path),
+                    GemlaConfig {
+                        generations_per_node: 1,
+                        overwrite: false,
+                    },
+                ))?;
+
+                log_error(gemla.simulate(100).await)?;
+
+                Ok(())
+            })
+        });
+
+    result?;
 
     info!("Finished in {:?}", now.elapsed());
 

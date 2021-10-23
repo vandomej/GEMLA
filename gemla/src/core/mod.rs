@@ -91,12 +91,8 @@ where
             if let Some(node) = node_to_process {
                 trace!("Adding node to process list {}", node.get_id());
 
-                // if self.threads.len() > 5 {
-                //     self.join_threads().await?;
-                // } else {
-                    self.threads
-                        .insert(node.get_id(), Box::pin(Gemla::process_node(node)));
-                // }
+                self.threads
+                    .insert(node.get_id(), Box::pin(Gemla::process_node(node)));
             } else {
                 trace!("No node found to process, joining threads");
 
@@ -110,13 +106,13 @@ where
     async fn join_threads(&mut self) -> Result<(), Error> {
         if self.threads.len() > 0 {
             trace!("Joining threads for nodes {:?}", self.threads.keys());
-    
+
             let results = futures::future::join_all(self.threads.values_mut()).await;
             let reduced_results: Result<Vec<GeneticNodeWrapper<T>>, Error> =
                 results.into_iter().collect();
-    
+
             self.threads.clear();
-    
+
             reduced_results.and_then(|r| {
                 if !self
                     .data
@@ -124,13 +120,12 @@ where
                 {
                     warn!("Unable to find nodes to replace in tree")
                 }
-    
+
                 self.data
                     .mutate(|(d, _)| Gemla::merge_completed_nodes(d.as_mut().unwrap()))??;
-    
+
                 Ok(())
             })?;
-    
         }
 
         Ok(())
