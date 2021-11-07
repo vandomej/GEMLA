@@ -8,12 +8,15 @@ mod test_state;
 
 use anyhow::anyhow;
 use clap::App;
-use gemla::core::{Gemla, GemlaConfig};
-use gemla::error::log_error;
-use std::path::PathBuf;
-use std::time::Instant;
+use easy_parallel::Parallel;
+use gemla::{
+    constants::args::FILE,
+    core::{Gemla, GemlaConfig},
+    error::{log_error, Error},
+};
+use smol::{channel, channel::RecvError, future, Executor};
+use std::{path::PathBuf, time::Instant};
 use test_state::TestState;
-// use std::io::Write;
 
 /// Runs a simluation of a genetic algorithm against a dataset.
 ///
@@ -27,16 +30,13 @@ fn main() -> anyhow::Result<()> {
 
     // Obtainning number of threads to use
     let num_threads = num_cpus::get().max(1);
-    let ex = smol::Executor::new();
-    let (signal, shutdown) = smol::channel::unbounded::<()>();
+    let ex = Executor::new();
+    let (signal, shutdown) = channel::unbounded::<()>();
 
     // Create an executor thread pool.
-    let (_, result): (
-        Vec<Result<(), smol::channel::RecvError>>,
-        Result<(), gemla::error::Error>,
-    ) = easy_parallel::Parallel::new()
+    let (_, result): (Vec<Result<(), RecvError>>, Result<(), Error>) = Parallel::new()
         .each(0..num_threads, |_| {
-            smol::future::block_on(ex.run(shutdown.recv()))
+            future::block_on(ex.run(shutdown.recv()))
         })
         .finish(|| {
             smol::block_on(async {
@@ -48,7 +48,7 @@ fn main() -> anyhow::Result<()> {
                 let matches = App::from_yaml(yaml).get_matches();
 
                 // Checking that the first argument <FILE> is a valid file
-                if let Some(file_path) = matches.value_of(gemla::constants::args::FILE) {
+                if let Some(file_path) = matches.value_of(FILE) {
                     let mut gemla = log_error(Gemla::<TestState>::new(
                         &PathBuf::from(file_path),
                         GemlaConfig {
@@ -61,9 +61,7 @@ fn main() -> anyhow::Result<()> {
 
                     Ok(())
                 } else {
-                    Err(gemla::error::Error::Other(anyhow!(
-                        "Invalid argument for FILE"
-                    )))
+                    Err(Error::Other(anyhow!("Invalid argument for FILE")))
                 }
             })
         });

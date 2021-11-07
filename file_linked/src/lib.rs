@@ -5,12 +5,14 @@ pub mod error;
 use anyhow::{anyhow, Context};
 use error::Error;
 use log::info;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::fs::{copy, remove_file, File};
-use std::io::ErrorKind;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use serde::{de::DeserializeOwned, Serialize};
+use std::{
+    fs::{copy, remove_file, File},
+    io::{ErrorKind, Write},
+    path::{Path, PathBuf},
+    thread,
+    thread::JoinHandle,
+};
 
 /// A wrapper around an object `T` that ties the object to a physical file
 #[derive(Debug)]
@@ -21,7 +23,7 @@ where
     val: T,
     path: PathBuf,
     temp_file_path: PathBuf,
-    file_thread: Option<std::thread::JoinHandle<()>>,
+    file_thread: Option<JoinHandle<()>>,
 }
 
 impl<T> Drop for FileLinked<T>
@@ -145,12 +147,14 @@ where
             .with_context(|| "Unable to serialize object into bincode".to_string())?;
 
         if let Some(file_thread) = self.file_thread.take() {
-            file_thread.join().expect("Error cleaning up file thread for file_linked object");
+            file_thread
+                .join()
+                .expect("Error cleaning up file thread for file_linked object");
         }
 
         match File::open(&self.path) {
             Ok(_) => {
-                let handle = std::thread::spawn(move || {
+                let handle = thread::spawn(move || {
                     copy(&thread_path, &thread_temp_path).expect("Unable to copy temp file");
 
                     let mut file = File::create(&thread_path).expect("Error creating file handle");
@@ -164,7 +168,7 @@ where
                 self.file_thread = Some(handle);
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
-                let handle = std::thread::spawn(move || {
+                let handle = thread::spawn(move || {
                     let mut file = File::create(&thread_path).expect("Error creating file handle");
 
                     file.write_all(thread_val.as_slice())
@@ -348,7 +352,7 @@ where
         ));
 
         match File::open(path).map_err(Error::from).and_then(|file| {
-            bincode::deserialize_from::<std::fs::File, T>(file)
+            bincode::deserialize_from::<File, T>(file)
                 .with_context(|| format!("Unable to deserialize file {}", path.display()))
                 .map_err(Error::from)
         }) {

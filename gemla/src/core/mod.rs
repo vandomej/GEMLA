@@ -3,19 +3,17 @@
 
 pub mod genetic_node;
 
-use crate::error::Error;
-use crate::tree::Tree;
+use crate::{error::Error, tree::Tree};
 use file_linked::FileLinked;
+use futures::{future, future::BoxFuture};
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use log::{info, trace, warn};
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
-use std::fs::File;
-use std::io::ErrorKind;
-use std::mem::swap;
-use std::path::Path;
-use std::time::Instant;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::{
+    collections::HashMap, fmt::Debug, fs::File, io::ErrorKind, marker::Send, mem, path::Path,
+    time::Instant,
+};
+use uuid::Uuid;
 
 type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 
@@ -36,15 +34,12 @@ where
     T: Serialize + Clone,
 {
     pub data: FileLinked<(Option<SimulationTree<T>>, GemlaConfig)>,
-    threads: std::collections::HashMap<
-        uuid::Uuid,
-        futures::prelude::future::BoxFuture<'a, Result<GeneticNodeWrapper<T>, Error>>,
-    >,
+    threads: HashMap<Uuid, BoxFuture<'a, Result<GeneticNodeWrapper<T>, Error>>>,
 }
 
 impl<'a, T: 'a> Gemla<'a, T>
 where
-    T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + std::marker::Send,
+    T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + Send,
 {
     pub fn new(path: &Path, config: GemlaConfig) -> Result<Self, Error> {
         match File::open(path) {
@@ -54,11 +49,11 @@ where
                 } else {
                     FileLinked::from_file(path)?
                 },
-                threads: std::collections::HashMap::new(),
+                threads: HashMap::new(),
             }),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
                 data: FileLinked::new((None, config), path)?,
-                threads: std::collections::HashMap::new(),
+                threads: HashMap::new(),
             }),
             Err(error) => Err(Error::IO(error)),
         }
@@ -69,10 +64,8 @@ where
         // in the tree and which nodes have not.
         self.data.mutate(|(d, c)| {
             let mut tree: Option<SimulationTree<T>> = Gemla::increase_height(d.take(), c, steps);
-            swap(d, &mut tree);
+            mem::swap(d, &mut tree);
         })?;
-
-        // println!("{}", serde_json::to_string(&self.data.readonly().0).expect(""));
 
         info!(
             "Height of simulation tree increased to {}",
@@ -124,7 +117,7 @@ where
         if !self.threads.is_empty() {
             trace!("Joining threads for nodes {:?}", self.threads.keys());
 
-            let results = futures::future::join_all(self.threads.values_mut()).await;
+            let results = future::join_all(self.threads.values_mut()).await;
             let reduced_results: Result<Vec<GeneticNodeWrapper<T>>, Error> =
                 results.into_iter().collect();
 

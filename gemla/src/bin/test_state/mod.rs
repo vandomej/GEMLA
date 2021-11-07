@@ -1,7 +1,5 @@
-use gemla::core::genetic_node::GeneticNode;
-use gemla::error;
+use gemla::{core::genetic_node::GeneticNode, error::Error};
 use rand::prelude::*;
-use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 const POPULATION_SIZE: u64 = 5;
@@ -13,7 +11,7 @@ pub struct TestState {
 }
 
 impl GeneticNode for TestState {
-    fn initialize() -> Result<Box<Self>, error::Error> {
+    fn initialize() -> Result<Box<Self>, Error> {
         let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
@@ -23,7 +21,7 @@ impl GeneticNode for TestState {
         Ok(Box::new(TestState { population }))
     }
 
-    fn simulate(&mut self) -> Result<(), error::Error> {
+    fn simulate(&mut self) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         self.population = self
@@ -35,7 +33,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn mutate(&mut self) -> Result<(), error::Error> {
+    fn mutate(&mut self) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         let mut v = self.population.clone();
@@ -73,7 +71,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn merge(left: &TestState, right: &TestState) -> Result<Box<TestState>, error::Error> {
+    fn merge(left: &TestState, right: &TestState) -> Result<Box<TestState>, Error> {
         let mut v = left.population.clone();
         v.append(&mut right.population.clone());
 

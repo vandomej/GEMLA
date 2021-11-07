@@ -7,6 +7,7 @@ use crate::error::Error;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use uuid::Uuid;
 
 /// An enum used to control the state of a [`GeneticNode`]
 ///
@@ -52,7 +53,7 @@ pub struct GeneticNodeWrapper<T> {
     state: GeneticState,
     generation: u64,
     max_generations: u64,
-    id: uuid::Uuid,
+    id: Uuid,
 }
 
 impl<T> Default for GeneticNodeWrapper<T> {
@@ -62,7 +63,7 @@ impl<T> Default for GeneticNodeWrapper<T> {
             state: GeneticState::Initialize,
             generation: 0,
             max_generations: 1,
-            id: uuid::Uuid::new_v4(),
+            id: Uuid::new_v4(),
         }
     }
 }
@@ -78,7 +79,7 @@ where
         }
     }
 
-    pub fn from(data: T, max_generations: u64, id: uuid::Uuid) -> Self {
+    pub fn from(data: T, max_generations: u64, id: Uuid) -> Self {
         GeneticNodeWrapper {
             node: Some(data),
             state: GeneticState::Simulate,
@@ -92,7 +93,7 @@ where
         self.node.as_ref()
     }
 
-    pub fn id(&self) -> uuid::Uuid {
+    pub fn id(&self) -> Uuid {
         self.id
     }
 
