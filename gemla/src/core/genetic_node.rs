@@ -105,16 +105,13 @@ where
     }
 
     pub fn process_node(&mut self) -> Result<GeneticState, Error> {
-        match (&self.state, &self.node) {
+        match (self.state, &mut self.node) {
             (GeneticState::Initialize, _) => {
                 self.node = Some(*T::initialize()?);
                 self.state = GeneticState::Simulate;
             }
-            (GeneticState::Simulate, Some(_)) => {
-                self.node
-                    .as_mut()
-                    .unwrap()
-                    .simulate()
+            (GeneticState::Simulate, Some(n)) => {
+                n.simulate()
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
 
                 self.state = if self.generation >= self.max_generations {
@@ -123,11 +120,8 @@ where
                     GeneticState::Mutate
                 };
             }
-            (GeneticState::Mutate, Some(_)) => {
-                self.node
-                    .as_mut()
-                    .unwrap()
-                    .mutate()
+            (GeneticState::Mutate, Some(n)) => {
+                n.mutate()
                     .with_context(|| format!("Error mutating node: {:?}", self))?;
 
                 self.generation += 1;

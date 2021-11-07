@@ -6,6 +6,7 @@ extern crate log;
 
 mod test_state;
 
+use anyhow::anyhow;
 use clap::App;
 use gemla::core::{Gemla, GemlaConfig};
 use gemla::error::log_error;
@@ -46,19 +47,24 @@ fn main() -> anyhow::Result<()> {
                 let yaml = load_yaml!("../../cli.yml");
                 let matches = App::from_yaml(yaml).get_matches();
 
-                // Checking that the first argument <DIRECTORY> is a valid directory
-                let file_path = matches.value_of(gemla::constants::args::FILE).unwrap();
-                let mut gemla = log_error(Gemla::<TestState>::new(
-                    &PathBuf::from(file_path),
-                    GemlaConfig {
-                        generations_per_node: 1,
-                        overwrite: true,
-                    },
-                ))?;
+                // Checking that the first argument <FILE> is a valid file
+                if let Some(file_path) = matches.value_of(gemla::constants::args::FILE) {
+                    let mut gemla = log_error(Gemla::<TestState>::new(
+                        &PathBuf::from(file_path),
+                        GemlaConfig {
+                            generations_per_node: 3,
+                            overwrite: true,
+                        },
+                    ))?;
 
-                log_error(gemla.simulate(3).await)?;
+                    log_error(gemla.simulate(3).await)?;
 
-                Ok(())
+                    Ok(())
+                } else {
+                    Err(gemla::error::Error::Other(anyhow!(
+                        "Invalid argument for FILE"
+                    )))
+                }
             })
         });
 

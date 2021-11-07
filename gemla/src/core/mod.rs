@@ -76,21 +76,36 @@ where
 
         info!(
             "Height of simulation tree increased to {}",
-            self.data.readonly().0.as_ref().unwrap().height()
+            self.data
+                .readonly()
+                .0
+                .as_ref()
+                .map(|t| format!("{}", t.height()))
+                .unwrap_or_else(|| "Tree is not defined".to_string())
         );
 
         loop {
-            if Gemla::is_completed(self.data.readonly().0.as_ref().unwrap()) {
+            if self
+                .data
+                .readonly()
+                .0
+                .as_ref()
+                .map(|t| Gemla::is_completed(t))
+                .unwrap_or(false)
+            {
                 self.join_threads().await?;
 
                 info!("Processed tree");
                 break;
             }
 
-            let node_to_process =
-                self.get_unprocessed_node(self.data.readonly().0.as_ref().unwrap());
-
-            if let Some(node) = node_to_process {
+            if let Some(node) = self
+                .data
+                .readonly()
+                .0
+                .as_ref()
+                .and_then(|t| self.get_unprocessed_node(t))
+            {
                 trace!("Adding node to process list {}", node.id());
 
                 self.threads
@@ -116,21 +131,22 @@ where
             self.threads.clear();
 
             reduced_results.and_then(|r| {
-                let failed_nodes = self
-                    .data
-                    .mutate(|(d, _)| Gemla::replace_nodes(d.as_mut().unwrap(), r))?;
+                self.data.mutate(|(d, _)| {
+                    if let Some(t) = d {
+                        let failed_nodes = Gemla::replace_nodes(t, r);
+                        if !failed_nodes.is_empty() {
+                            warn!(
+                                "Unable to find {:?} to replace in tree",
+                                failed_nodes.iter().map(|n| n.id())
+                            )
+                        }
 
-                if !failed_nodes.is_empty() {
-                    warn!(
-                        "Unable to find {:?} to replace in tree",
-                        failed_nodes.iter().map(|n| n.id())
-                    )
-                }
-
-                self.data
-                    .mutate(|(d, _)| Gemla::merge_completed_nodes(d.as_mut().unwrap()))??;
-
-                Ok(())
+                        Gemla::merge_completed_nodes(t)
+                    } else {
+                        warn!("Unable to replce nodes {:?} in empty tree", r);
+                        Ok(())
+                    }
+                })?
             })?;
         }
 
@@ -145,15 +161,14 @@ where
                         && r.val.state() == GeneticState::Finish =>
                 {
                     info!("Merging nodes {} and {}", l.val.id(), r.val.id());
-
-                    let left_node = l.val.as_ref().unwrap();
-                    let right_node = r.val.as_ref().unwrap();
-                    let merged_node = GeneticNode::merge(left_node, right_node)?;
-                    tree.val = GeneticNodeWrapper::from(
-                        *merged_node,
-                        tree.val.max_generations(),
-                        tree.val.id(),
-                    );
+                    if let (Some(left_node), Some(right_node)) = (l.val.as_ref(), r.val.as_ref()) {
+                        let merged_node = GeneticNode::merge(left_node, right_node)?;
+                        tree.val = GeneticNodeWrapper::from(
+                            *merged_node,
+                            tree.val.max_generations(),
+                            tree.val.id(),
+                        );
+                    }
                 }
                 (Some(l), Some(r)) => {
                     Gemla::merge_completed_nodes(l)?;
@@ -162,21 +177,25 @@ where
                 (Some(l), None) if l.val.state() == GeneticState::Finish => {
                     trace!("Copying node {}", l.val.id());
 
-                    tree.val = GeneticNodeWrapper::from(
-                        l.val.as_ref().unwrap().clone(),
-                        tree.val.max_generations(),
-                        tree.val.id(),
-                    );
+                    if let Some(left_node) = l.val.as_ref() {
+                        GeneticNodeWrapper::from(
+                            left_node.clone(),
+                            tree.val.max_generations(),
+                            tree.val.id(),
+                        );
+                    }
                 }
                 (Some(l), None) => Gemla::merge_completed_nodes(l)?,
                 (None, Some(r)) if r.val.state() == GeneticState::Finish => {
                     trace!("Copying node {}", r.val.id());
 
-                    tree.val = GeneticNodeWrapper::from(
-                        r.val.as_ref().unwrap().clone(),
-                        tree.val.max_generations(),
-                        tree.val.id(),
-                    );
+                    if let Some(right_node) = r.val.as_ref() {
+                        tree.val = GeneticNodeWrapper::from(
+                            right_node.clone(),
+                            tree.val.max_generations(),
+                            tree.val.id(),
+                        );
+                    }
                 }
                 (None, Some(r)) => Gemla::merge_completed_nodes(r)?,
                 (_, _) => (),
@@ -289,7 +308,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use std::str::FromStr;
 
-    #[derive(Default, Deserialize, Serialize, Clone, Debug, PartialEq)]
+    #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
         pub score: f64,
     }

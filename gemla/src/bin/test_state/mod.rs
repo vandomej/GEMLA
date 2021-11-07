@@ -3,7 +3,6 @@ use gemla::error;
 use rand::prelude::*;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 
 const POPULATION_SIZE: u64 = 5;
 const POPULATION_REDUCTION_SIZE: u64 = 3;
@@ -47,7 +46,7 @@ impl GeneticNode for TestState {
         self.population = v[0..(POPULATION_REDUCTION_SIZE as usize)].to_vec();
 
         loop {
-            if self.population.len() >= POPULATION_SIZE.try_into().unwrap() {
+            if self.population.len() as u64 >= POPULATION_SIZE {
                 break;
             }
 

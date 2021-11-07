@@ -29,10 +29,8 @@ where
     T: Serialize,
 {
     fn drop(&mut self) {
-        if self.file_thread.is_some() {
-            let file_thread = self.file_thread.take();
+        if let Some(file_thread) = self.file_thread.take() {
             file_thread
-                .unwrap()
                 .join()
                 .expect("Error cleaning up file thread for file_linked object");
         }
@@ -145,9 +143,9 @@ where
         let thread_temp_path = self.temp_file_path.clone();
         let thread_val = bincode::serialize(&self.val)
             .with_context(|| "Unable to serialize object into bincode".to_string())?;
-        if self.file_thread.is_some() {
-            let file_thread = self.file_thread.take();
-            file_thread.unwrap().join().expect("Unable to join thread");
+
+        if let Some(file_thread) = self.file_thread.take() {
+            file_thread.join().expect("Error cleaning up file thread for file_linked object");
         }
 
         match File::open(&self.path) {
