@@ -47,47 +47,61 @@ pub trait GeneticNode {
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GeneticNodeWrapper<T>
-where
-    T: Clone,
-{
-    pub node: Option<T>,
+pub struct GeneticNodeWrapper<T> {
+    node: Option<T>,
     state: GeneticState,
     generation: u64,
-    pub total_generations: u64,
+    max_generations: u64,
     id: uuid::Uuid,
 }
 
-impl<T> GeneticNodeWrapper<T>
-where
-    T: GeneticNode + Debug + Clone,
-{
-    pub fn get_id(&self) -> uuid::Uuid {
-        self.id
-    }
-
-    pub fn new(total_generations: u64) -> Self {
+impl<T> Default for GeneticNodeWrapper<T> {
+    fn default() -> Self {
         GeneticNodeWrapper {
             node: None,
             state: GeneticState::Initialize,
             generation: 0,
-            total_generations,
+            max_generations: 1,
             id: uuid::Uuid::new_v4(),
         }
     }
+}
 
-    pub fn from(data: T, total_generations: u64, id: uuid::Uuid) -> Self {
+impl<T> GeneticNodeWrapper<T>
+where
+    T: GeneticNode + Debug,
+{
+    pub fn new(max_generations: u64) -> Self {
+        GeneticNodeWrapper::<T> {
+            max_generations,
+            ..Default::default()
+        }
+    }
+
+    pub fn from(data: T, max_generations: u64, id: uuid::Uuid) -> Self {
         GeneticNodeWrapper {
             node: Some(data),
             state: GeneticState::Simulate,
             generation: 0,
-            total_generations,
+            max_generations,
             id,
         }
     }
 
-    pub fn state(&self) -> &GeneticState {
-        &self.state
+    pub fn as_ref(&self) -> Option<&T> {
+        self.node.as_ref()
+    }
+
+    pub fn id(&self) -> uuid::Uuid {
+        self.id
+    }
+
+    pub fn max_generations(&self) -> u64 {
+        self.max_generations
+    }
+
+    pub fn state(&self) -> GeneticState {
+        self.state
     }
 
     pub fn process_node(&mut self) -> Result<GeneticState, Error> {
@@ -103,7 +117,7 @@ where
                     .simulate()
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
 
-                self.state = if self.generation >= self.total_generations {
+                self.state = if self.generation >= self.max_generations {
                     GeneticState::Finish
                 } else {
                     GeneticState::Mutate

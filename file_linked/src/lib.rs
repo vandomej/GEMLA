@@ -24,14 +24,17 @@ where
     file_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-impl<T> Drop for FileLinked<T> 
-where T: Serialize
+impl<T> Drop for FileLinked<T>
+where
+    T: Serialize,
 {
     fn drop(&mut self) {
-        if self.file_thread.is_some()
-        {
+        if self.file_thread.is_some() {
             let file_thread = self.file_thread.take();
-            file_thread.unwrap().join().expect("Error cleaning up file thread for file_linked object");
+            file_thread
+                .unwrap()
+                .join()
+                .expect("Error cleaning up file thread for file_linked object");
         }
     }
 }
@@ -71,6 +74,8 @@ where
     /// assert_eq!(linked_test.readonly().b, String::from("two"));
     /// assert_eq!(linked_test.readonly().c, 3.0);
     /// #
+    /// # drop(linked_test);
+    /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
@@ -109,6 +114,8 @@ where
     /// assert_eq!(linked_test.readonly().b, String::from("two"));
     /// assert_eq!(linked_test.readonly().c, 3.0);
     /// #
+    /// # drop(linked_test);
+    /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
@@ -145,9 +152,8 @@ where
 
         match File::open(&self.path) {
             Ok(_) => {
-
                 let handle = std::thread::spawn(move || {
-                    copy(&thread_path, &thread_temp_path).expect("Error copying temp file");
+                    copy(&thread_path, &thread_temp_path).expect("Unable to copy temp file");
 
                     let mut file = File::create(&thread_path).expect("Error creating file handle");
 
@@ -210,6 +216,8 @@ where
     ///
     /// assert_eq!(linked_test.readonly().a, 2);
     /// #
+    /// # drop(linked_test);
+    /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// #
     /// # Ok(())
@@ -260,6 +268,8 @@ where
     /// })?;
     ///
     /// assert_eq!(linked_test.readonly().a, 2);
+    /// #
+    /// # drop(linked_test);
     /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// #
@@ -321,6 +331,8 @@ where
     /// assert_eq!(linked_test.readonly().a, test.a);
     /// assert_eq!(linked_test.readonly().b, test.b);
     /// assert_eq!(linked_test.readonly().c, test.c);
+    /// #
+    /// # drop(linked_test);
     /// #
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// #
@@ -416,6 +428,8 @@ mod tests {
             format!("{:?}", file_linked_list.readonly()),
             "[1, 1, 3, 4, 5]"
         );
+
+        drop(file_linked_list);
 
         fs::remove_file("test.txt").expect("Unable to remove file");
 

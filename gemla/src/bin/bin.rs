@@ -52,11 +52,11 @@ fn main() -> anyhow::Result<()> {
                     &PathBuf::from(file_path),
                     GemlaConfig {
                         generations_per_node: 1,
-                        overwrite: false,
+                        overwrite: true,
                     },
                 ))?;
 
-                log_error(gemla.simulate(100).await)?;
+                log_error(gemla.simulate(3).await)?;
 
                 Ok(())
             })
