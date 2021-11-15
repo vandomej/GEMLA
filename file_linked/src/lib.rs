@@ -120,7 +120,7 @@ where
     /// # }
     /// ```
     pub fn new(val: T, path: &Path) -> Result<FileLinked<T>, Error> {
-        let mut temp_file_path = path.clone().to_path_buf();
+        let mut temp_file_path = path.to_path_buf();
         temp_file_path.set_file_name(format!(
             ".temp{}",
             path.file_name()
@@ -408,19 +408,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{
-        fs,
-        fs::File,
-    };
+    use std::{fs, fs::File};
 
-    struct CleanUp
-    {
-        path: PathBuf
+    struct CleanUp {
+        path: PathBuf,
     }
 
     impl CleanUp {
         fn new(path: &Path) -> CleanUp {
-            CleanUp { path: path.to_path_buf()}
+            CleanUp {
+                path: path.to_path_buf(),
+            }
         }
 
         pub fn run<F: FnOnce(&Path) -> Result<(), Error>>(&self, op: F) -> Result<(), Error> {
@@ -456,11 +454,12 @@ mod tests {
         let cleanup = CleanUp::new(&path);
         cleanup.run(|p| {
             let val = "test";
-            
+
             FileLinked::new(val, &p)?;
-            
+
             let file = File::open(&p)?;
-            let result: String = bincode::deserialize_from(file).expect("Unable to deserialize from file");
+            let result: String =
+                bincode::deserialize_from(file).expect("Unable to deserialize from file");
             assert_eq!(result, val);
 
             Ok(())
@@ -475,19 +474,13 @@ mod tests {
             let list = vec![1, 2, 3, 4];
             let mut file_linked_list = FileLinked::new(list, &p)?;
             assert_eq!(*file_linked_list.readonly(), vec![1, 2, 3, 4]);
-    
+
             file_linked_list.mutate(|v1| v1.push(5))?;
-            assert_eq!(
-                *file_linked_list.readonly(),
-                vec![1, 2, 3, 4, 5]
-            );
-    
+            assert_eq!(*file_linked_list.readonly(), vec![1, 2, 3, 4, 5]);
+
             file_linked_list.mutate(|v1| v1[1] = 1)?;
-            assert_eq!(
-                *file_linked_list.readonly(),
-                vec![1, 1, 3, 4, 5]
-            );
-    
+            assert_eq!(*file_linked_list.readonly(), vec![1, 1, 3, 4, 5]);
+
             drop(file_linked_list);
             Ok(())
         })
@@ -502,13 +495,10 @@ mod tests {
             let val2 = String::from("val2");
             let mut file_linked_list = FileLinked::new(val1.clone(), &p)?;
             assert_eq!(*file_linked_list.readonly(), val1);
-    
+
             file_linked_list.replace(val2.clone())?;
-            assert_eq!(
-                *file_linked_list.readonly(),
-                val2
-            );
-    
+            assert_eq!(*file_linked_list.readonly(), val2);
+
             drop(file_linked_list);
             Ok(())
         })
@@ -521,16 +511,15 @@ mod tests {
         cleanup.run(|p| {
             let value: Vec<f64> = vec![2.0, 3.0, 5.0];
             let file = File::create(&p)?;
-    
+
             bincode::serialize_into(&file, &value).expect("Unable to serialize into file");
             drop(file);
-    
+
             let linked_object: FileLinked<Vec<f64>> = FileLinked::from_file(&p)?;
             assert_eq!(*linked_object.readonly(), value);
-    
+
             drop(linked_object);
             Ok(())
         })
-
     }
 }

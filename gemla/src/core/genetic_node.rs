@@ -47,7 +47,7 @@ pub trait GeneticNode {
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct GeneticNodeWrapper<T> {
     node: Option<T>,
     state: GeneticState,
@@ -61,7 +61,7 @@ impl<T> Default for GeneticNodeWrapper<T> {
         GeneticNodeWrapper {
             node: None,
             state: GeneticState::Initialize,
-            generation: 0,
+            generation: 1,
             max_generations: 1,
             id: Uuid::new_v4(),
         }
@@ -83,7 +83,7 @@ where
         GeneticNodeWrapper {
             node: Some(data),
             state: GeneticState::Simulate,
-            generation: 0,
+            generation: 1,
             max_generations,
             id,
         }
@@ -133,5 +133,138 @@ where
         }
 
         Ok(self.state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Error;
+    use anyhow::anyhow;
+
+    #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+    struct TestState {
+        pub score: f64,
+    }
+
+    impl GeneticNode for TestState {
+        fn simulate(&mut self) -> Result<(), Error> {
+            self.score += 1.0;
+            Ok(())
+        }
+
+        fn mutate(&mut self) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn initialize() -> Result<Box<TestState>, Error> {
+            Ok(Box::new(TestState { score: 0.0 }))
+        }
+
+        fn merge(_l: &TestState, _r: &TestState) -> Result<Box<TestState>, Error> {
+            Err(Error::Other(anyhow!("Unable to merge")))
+        }
+    }
+
+    #[test]
+    fn test_new() -> Result<(), Error> {
+        let genetic_node = GeneticNodeWrapper::<TestState>::new(10);
+
+        let other_genetic_node = GeneticNodeWrapper::<TestState> {
+            node: None,
+            state: GeneticState::Initialize,
+            generation: 1,
+            max_generations: 10,
+            id: genetic_node.id(),
+        };
+
+        assert_eq!(genetic_node, other_genetic_node);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_from() -> Result<(), Error> {
+        let val = TestState { score: 0.0 };
+        let uuid = Uuid::new_v4();
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+
+        let other_genetic_node = GeneticNodeWrapper::<TestState> {
+            node: Some(val),
+            state: GeneticState::Simulate,
+            generation: 1,
+            max_generations: 10,
+            id: genetic_node.id(),
+        };
+
+        assert_eq!(genetic_node, other_genetic_node);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_as_ref() -> Result<(), Error> {
+        let val = TestState { score: 3.0 };
+        let uuid = Uuid::new_v4();
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+
+        let ref_value = genetic_node.as_ref().unwrap();
+
+        assert_eq!(*ref_value, val);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_id() -> Result<(), Error> {
+        let val = TestState { score: 3.0 };
+        let uuid = Uuid::new_v4();
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+
+        let id_value = genetic_node.id();
+
+        assert_eq!(id_value, uuid);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_max_generations() -> Result<(), Error> {
+        let val = TestState { score: 3.0 };
+        let uuid = Uuid::new_v4();
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+
+        let max_generations = genetic_node.max_generations();
+
+        assert_eq!(max_generations, 10);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_state() -> Result<(), Error> {
+        let val = TestState { score: 3.0 };
+        let uuid = Uuid::new_v4();
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+
+        let state = genetic_node.state();
+
+        assert_eq!(state, GeneticState::Simulate);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_node() -> Result<(), Error> {
+        let mut genetic_node = GeneticNodeWrapper::<TestState>::new(2);
+
+        assert_eq!(genetic_node.state(), GeneticState::Initialize);
+        assert_eq!(genetic_node.process_node()?, GeneticState::Simulate);
+        assert_eq!(genetic_node.process_node()?, GeneticState::Mutate);
+        assert_eq!(genetic_node.process_node()?, GeneticState::Simulate);
+        assert_eq!(genetic_node.process_node()?, GeneticState::Finish);
+        assert_eq!(genetic_node.process_node()?, GeneticState::Finish);
+
+        Ok(())
     }
 }

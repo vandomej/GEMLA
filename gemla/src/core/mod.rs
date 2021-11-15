@@ -299,19 +299,10 @@ mod tests {
     use crate::core::*;
 
     use serde::{Deserialize, Serialize};
-    use std::str::FromStr;
 
     #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
         pub score: f64,
-    }
-
-    impl FromStr for TestState {
-        type Err = String;
-
-        fn from_str(s: &str) -> Result<TestState, Self::Err> {
-            serde_json::from_str(s).map_err(|_| format!("Unable to parse string {}", s))
-        }
     }
 
     impl genetic_node::GeneticNode for TestState {
