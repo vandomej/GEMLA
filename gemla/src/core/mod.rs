@@ -17,7 +17,43 @@ use uuid::Uuid;
 
 type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 
-#[derive(Serialize, Deserialize)]
+/// Provides configuration options for managing a [`Gemla`] object as it executes.
+/// 
+/// # Examples
+/// ```
+/// #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+/// struct TestState {
+///     pub score: f64,
+/// }
+/// 
+/// impl genetic_node::GeneticNode for TestState {
+///     fn simulate(&mut self) -> Result<(), Error> {
+///         self.score += 1.0;
+///         Ok(())
+///     }
+/// 
+///     fn mutate(&mut self) -> Result<(), Error> {
+///         Ok(())
+///     }
+/// 
+///     fn initialize() -> Result<Box<TestState>, Error> {
+///         Ok(Box::new(TestState { score: 0.0 }))
+///     }
+/// 
+///     fn merge(left: &TestState, right: &TestState) -> Result<Box<TestState>, Error> {
+///         Ok(Box::new(if left.score > right.score {
+///             left.clone()
+///         } else {
+///             right.clone()
+///         }))
+///     }
+/// }
+/// 
+/// fn main() {
+///     
+/// }
+/// ```
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub struct GemlaConfig {
     pub generations_per_node: u64,
     pub overwrite: bool,
@@ -43,6 +79,8 @@ where
 {
     pub fn new(path: &Path, config: GemlaConfig) -> Result<Self, Error> {
         match File::open(path) {
+            // If the file exists we either want to overwrite the file or read from the file 
+            // based on the configuration provided
             Ok(_) => Ok(Gemla {
                 data: if config.overwrite {
                     FileLinked::new((None, config), path)?
@@ -51,12 +89,17 @@ where
                 },
                 threads: HashMap::new(),
             }),
+            // If the file doesn't exist we must create it
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
                 data: FileLinked::new((None, config), path)?,
                 threads: HashMap::new(),
             }),
             Err(error) => Err(Error::IO(error)),
         }
+    }
+
+    pub fn tree_ref(&self) -> Option<&SimulationTree<T>> {
+        self.data.readonly().0.as_ref()
     }
 
     pub async fn simulate(&mut self, steps: u64) -> Result<(), Error> {
@@ -69,20 +112,15 @@ where
 
         info!(
             "Height of simulation tree increased to {}",
-            self.data
-                .readonly()
-                .0
-                .as_ref()
+            self.tree_ref()
                 .map(|t| format!("{}", t.height()))
                 .unwrap_or_else(|| "Tree is not defined".to_string())
         );
 
         loop {
+            // We need to keep simulating until the tree has been completely processed.
             if self
-                .data
-                .readonly()
-                .0
-                .as_ref()
+                .tree_ref()
                 .map(|t| Gemla::is_completed(t))
                 .unwrap_or(false)
             {
@@ -93,10 +131,7 @@ where
             }
 
             if let Some(node) = self
-                .data
-                .readonly()
-                .0
-                .as_ref()
+                .tree_ref()
                 .and_then(|t| self.get_unprocessed_node(t))
             {
                 trace!("Adding node to process list {}", node.id());
@@ -118,15 +153,17 @@ where
             trace!("Joining threads for nodes {:?}", self.threads.keys());
 
             let results = future::join_all(self.threads.values_mut()).await;
+            // Converting a list of results into a result wrapping the list
             let reduced_results: Result<Vec<GeneticNodeWrapper<T>>, Error> =
                 results.into_iter().collect();
-
             self.threads.clear();
 
+            // We need to retrieve the processed nodes from the resulting list and replace them in the original list
             reduced_results.and_then(|r| {
                 self.data.mutate(|(d, _)| {
                     if let Some(t) = d {
                         let failed_nodes = Gemla::replace_nodes(t, r);
+                        // We receive a list of nodes that were unable to be found in the original tree
                         if !failed_nodes.is_empty() {
                             warn!(
                                 "Unable to find {:?} to replace in tree",
@@ -134,6 +171,7 @@ where
                             )
                         }
 
+                        // Once the nodes are replaced we need to find nodes that can be merged from the completed children nodes
                         Gemla::merge_completed_nodes(t)
                     } else {
                         warn!("Unable to replce nodes {:?} in empty tree", r);
@@ -149,6 +187,8 @@ where
     fn merge_completed_nodes(tree: &mut SimulationTree<T>) -> Result<(), Error> {
         if tree.val.state() == GeneticState::Initialize {
             match (&mut tree.left, &mut tree.right) {
+                // If the current node has been initialized, and has children nodes that are completed, then we need
+                // to merge the children nodes together into the parent node
                 (Some(l), Some(r))
                     if l.val.state() == GeneticState::Finish
                         && r.val.state() == GeneticState::Finish =>
@@ -167,6 +207,7 @@ where
                     Gemla::merge_completed_nodes(l)?;
                     Gemla::merge_completed_nodes(r)?;
                 }
+                // If there is only one child node that's completed then we want to copy it to the parent node
                 (Some(l), None) if l.val.state() == GeneticState::Finish => {
                     trace!("Copying node {}", l.val.id());
 
@@ -199,14 +240,15 @@ where
     }
 
     fn get_unprocessed_node(&self, tree: &SimulationTree<T>) -> Option<GeneticNodeWrapper<T>> {
+        // If the current node has been processed or exists in the thread list then we want to stop recursing. Checking if it exists in the thread list 
+        // should be fine because we process the tree from bottom to top.
         if tree.val.state() != GeneticState::Finish && !self.threads.contains_key(&tree.val.id()) {
             match (&tree.left, &tree.right) {
+                // If the children are finished we can start processing the currrent node. The current node should be merged from the children already 
+                // during join_threads.
                 (Some(l), Some(r))
                     if l.val.state() == GeneticState::Finish
-                        && r.val.state() == GeneticState::Finish =>
-                {
-                    Some(tree.val.clone())
-                }
+                        && r.val.state() == GeneticState::Finish => Some(tree.val.clone()),
                 (Some(l), Some(r)) => self
                     .get_unprocessed_node(l)
                     .or_else(|| self.get_unprocessed_node(r)),
@@ -223,6 +265,7 @@ where
         tree: &mut SimulationTree<T>,
         mut nodes: Vec<GeneticNodeWrapper<T>>,
     ) -> Vec<GeneticNodeWrapper<T>> {
+        // Replacing nodes as we recurse through the tree
         if let Some(i) = nodes.iter().position(|n| n.id() == tree.val.id()) {
             tree.val = nodes.remove(i);
         }
@@ -243,15 +286,16 @@ where
         if amount == 0 {
             tree
         } else {
-            let right_branch_height =
+            let left_branch_right =
                 tree.as_ref().map(|t| t.height() as u64).unwrap_or(0) + amount - 1;
-
+            
             Some(Box::new(Tree::new(
                 GeneticNodeWrapper::new(config.generations_per_node),
                 Gemla::increase_height(tree, config, amount - 1),
-                if right_branch_height > 0 {
+                // The right branch height has to equal the left branches total height
+                if left_branch_right > 0 {
                     Some(Box::new(btree!(GeneticNodeWrapper::new(
-                        right_branch_height * config.generations_per_node
+                        left_branch_right * config.generations_per_node
                     ))))
                 } else {
                     None
@@ -261,16 +305,8 @@ where
     }
 
     fn is_completed(tree: &SimulationTree<T>) -> bool {
-        if tree.val.state() == GeneticState::Finish {
-            match (&tree.left, &tree.right) {
-                (Some(l), Some(r)) => Gemla::is_completed(l) && Gemla::is_completed(r),
-                (Some(l), None) => Gemla::is_completed(l),
-                (None, Some(r)) => Gemla::is_completed(r),
-                (None, None) => true,
-            }
-        } else {
-            false
-        }
+        // If the current node is finished, then by convention the children should all be finished as well
+        tree.val.state() == GeneticState::Finish 
     }
 
     async fn process_node(mut node: GeneticNodeWrapper<T>) -> Result<GeneticNodeWrapper<T>, Error> {
@@ -297,8 +333,33 @@ where
 #[cfg(test)]
 mod tests {
     use crate::core::*;
-
     use serde::{Deserialize, Serialize};
+    use std::path::PathBuf;
+    use std::fs;
+
+    struct CleanUp {
+        path: PathBuf,
+    }
+
+    impl CleanUp {
+        fn new(path: &Path) -> CleanUp {
+            CleanUp {
+                path: path.to_path_buf(),
+            }
+        }
+
+        pub fn run<F: FnOnce(&Path) -> Result<(), Error>>(&self, op: F) -> Result<(), Error> {
+            op(&self.path)
+        }
+    }
+
+    impl Drop for CleanUp {
+        fn drop(&mut self) {
+            if self.path.exists() {
+                fs::remove_file(&self.path).expect("Unable to remove file");
+            }
+        }
+    }
 
     #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
@@ -327,4 +388,67 @@ mod tests {
             }))
         }
     }
+
+    #[test]
+    fn test_new() -> Result<(), Error> {
+        let path = PathBuf::from("test_new_non_existing");
+        CleanUp::new(&path).run(|p| {
+            assert!(!path.exists());
+
+            // Testing initial creation
+            let mut config = GemlaConfig {
+                generations_per_node: 1,
+                overwrite: true
+            };
+            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+
+            smol::block_on(gemla.simulate(2))?;
+            assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
+            
+            drop(gemla);
+            assert!(path.exists());
+
+            // Testing overwriting data
+            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+
+            smol::block_on(gemla.simulate(2))?;
+            assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
+
+            drop(gemla);
+            assert!(path.exists());
+
+            // Testing not-overwriting data
+            config.overwrite = false;
+            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+
+            smol::block_on(gemla.simulate(2))?;
+            assert_eq!(gemla.tree_ref().unwrap().height(), 4);
+
+            drop(gemla);
+            assert!(path.exists());
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_simulate() -> Result<(), Error> {
+        let path = PathBuf::from("test_simulate");
+        CleanUp::new(&path).run(|p| {
+            // Testing initial creation
+            let config = GemlaConfig {
+                generations_per_node: 10,
+                overwrite: true
+            };
+            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+
+            smol::block_on(gemla.simulate(5))?;
+            let tree = gemla.tree_ref().unwrap();
+            assert_eq!(tree.height(), 5);
+            assert_eq!(tree.val.as_ref().unwrap().score, 50.0);
+
+            Ok(())
+        })
+    }
+
 }
