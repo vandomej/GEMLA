@@ -12,3 +12,5 @@ Cargo.lock
 settings.json
 
 .DS_Store
+
+.vscode/alive

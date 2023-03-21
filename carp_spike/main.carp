@@ -1,0 +1,10 @@
+(use Random)
+(Project.config "title" "gemla")
+
+(deftype SimulationNode [population-size Int, population-cutoff Int])
+
+;; (let [test (SimulationNode.init 10 3)]
+;;     (do 
+;;         (SimulationNode.set-population-size test 20)
+;;         (SimulationNode.population-size &test)
+;;         ))
