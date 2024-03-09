@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate clap;
 extern crate gemla;
 #[macro_use]
@@ -6,17 +5,23 @@ extern crate log;
 
 mod test_state;
 
-use anyhow::anyhow;
-use clap::App;
 use easy_parallel::Parallel;
 use gemla::{
-    constants::args::FILE,
     core::{Gemla, GemlaConfig},
     error::{log_error, Error},
 };
 use smol::{channel, channel::RecvError, future, Executor};
 use std::{path::PathBuf, time::Instant};
 use test_state::TestState;
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// The file to read/write the dataset from/to.
+    #[arg(short, long)]
+    file: String,
+}
 
 /// Runs a simluation of a genetic algorithm against a dataset.
 ///
@@ -42,27 +47,21 @@ fn main() -> anyhow::Result<()> {
             smol::block_on(async {
                 drop(signal);
 
-                // Command line arguments are parsed with the clap crate. And this program uses
-                // the yaml method with clap.
-                let yaml = load_yaml!("../../cli.yml");
-                let matches = App::from_yaml(yaml).get_matches();
+                // Command line arguments are parsed with the clap crate.
+                let args = Args::parse();
 
                 // Checking that the first argument <FILE> is a valid file
-                if let Some(file_path) = matches.value_of(FILE) {
-                    let mut gemla = log_error(Gemla::<TestState>::new(
-                        &PathBuf::from(file_path),
-                        GemlaConfig {
-                            generations_per_node: 3,
-                            overwrite: true,
-                        },
-                    ))?;
+                let mut gemla = log_error(Gemla::<TestState>::new(
+                    &PathBuf::from(args.file),
+                    GemlaConfig {
+                        generations_per_node: 3,
+                        overwrite: true,
+                    },
+                ))?;
 
-                    log_error(gemla.simulate(3).await)?;
+                log_error(gemla.simulate(3).await)?;
 
-                    Ok(())
-                } else {
-                    Err(Error::Other(anyhow!("Invalid argument for FILE")))
-                }
+                Ok(())
             })
         });
 

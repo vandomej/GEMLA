@@ -20,7 +20,7 @@ type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 /// Provides configuration options for managing a [`Gemla`] object as it executes.
 /// 
 /// # Examples
-/// ```
+/// ```rust,ignore
 /// #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 /// struct TestState {
 ///     pub score: f64,
