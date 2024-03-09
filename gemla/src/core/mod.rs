@@ -4,7 +4,7 @@
 pub mod genetic_node;
 
 use crate::{error::Error, tree::Tree};
-use file_linked::FileLinked;
+use file_linked::{constants::data_format::DataFormat, FileLinked};
 use futures::{future, future::BoxFuture};
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use log::{info, trace, warn};
@@ -77,21 +77,21 @@ impl<'a, T: 'a> Gemla<'a, T>
 where
     T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + Send,
 {
-    pub fn new(path: &Path, config: GemlaConfig) -> Result<Self, Error> {
+    pub fn new(path: &Path, config: GemlaConfig, data_format: DataFormat) -> Result<Self, Error> {
         match File::open(path) {
             // If the file exists we either want to overwrite the file or read from the file 
             // based on the configuration provided
             Ok(_) => Ok(Gemla {
                 data: if config.overwrite {
-                    FileLinked::new((None, config), path)?
+                    FileLinked::new((None, config), path, data_format)?
                 } else {
-                    FileLinked::from_file(path)?
+                    FileLinked::from_file(path, data_format)?
                 },
                 threads: HashMap::new(),
             }),
             // If the file doesn't exist we must create it
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
-                data: FileLinked::new((None, config), path)?,
+                data: FileLinked::new((None, config), path, data_format)?,
                 threads: HashMap::new(),
             }),
             Err(error) => Err(Error::IO(error)),
@@ -400,7 +400,7 @@ mod tests {
                 generations_per_node: 1,
                 overwrite: true
             };
-            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
             smol::block_on(gemla.simulate(2))?;
             assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
@@ -409,7 +409,7 @@ mod tests {
             assert!(path.exists());
 
             // Testing overwriting data
-            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
             smol::block_on(gemla.simulate(2))?;
             assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
@@ -419,7 +419,7 @@ mod tests {
 
             // Testing not-overwriting data
             config.overwrite = false;
-            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
             smol::block_on(gemla.simulate(2))?;
             assert_eq!(gemla.tree_ref().unwrap().height(), 4);
@@ -440,7 +440,7 @@ mod tests {
                 generations_per_node: 10,
                 overwrite: true
             };
-            let mut gemla = Gemla::<TestState>::new(&p, config)?;
+            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
             smol::block_on(gemla.simulate(5))?;
             let tree = gemla.tree_ref().unwrap();

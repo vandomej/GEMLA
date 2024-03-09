@@ -1,8 +1,10 @@
 //! A wrapper around an object that ties it to a physical file
 
 pub mod error;
+pub mod constants;
 
 use anyhow::{anyhow, Context};
+use constants::data_format::DataFormat;
 use error::Error;
 use log::info;
 use serde::{de::DeserializeOwned, Serialize};
@@ -14,6 +16,8 @@ use std::{
     thread::JoinHandle,
 };
 
+
+
 /// A wrapper around an object `T` that ties the object to a physical file
 #[derive(Debug)]
 pub struct FileLinked<T>
@@ -24,6 +28,7 @@ where
     path: PathBuf,
     temp_file_path: PathBuf,
     file_thread: Option<JoinHandle<()>>,
+    data_format: DataFormat,
 }
 
 impl<T> Drop for FileLinked<T>
@@ -48,6 +53,7 @@ where
     /// # Examples
     /// ```
     /// # use file_linked::*;
+    /// # use file_linked::constants::data_format::DataFormat;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -67,7 +73,7 @@ where
     ///     c: 3.0
     /// };
     ///
-    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"))
+    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Json)
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
@@ -88,6 +94,7 @@ where
     /// # Examples
     /// ```
     /// # use file_linked::*;
+    /// # use file_linked::constants::data_format::DataFormat;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -107,7 +114,7 @@ where
     ///     c: 3.0
     /// };
     ///
-    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"))
+    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Json)
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
@@ -119,7 +126,7 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn new(val: T, path: &Path) -> Result<FileLinked<T>, Error> {
+    pub fn new(val: T, path: &Path, data_format: DataFormat) -> Result<FileLinked<T>, Error> {
         let mut temp_file_path = path.to_path_buf();
         temp_file_path.set_file_name(format!(
             ".temp{}",
@@ -134,6 +141,7 @@ where
             path: path.to_path_buf(),
             temp_file_path,
             file_thread: None,
+            data_format
         };
 
         result.write_data()?;
@@ -143,8 +151,12 @@ where
     fn write_data(&mut self) -> Result<(), Error> {
         let thread_path = self.path.clone();
         let thread_temp_path = self.temp_file_path.clone();
-        let thread_val = bincode::serialize(&self.val)
-            .with_context(|| "Unable to serialize object into bincode".to_string())?;
+        let thread_val = match self.data_format {
+            DataFormat::Bincode => bincode::serialize(&self.val)
+                .with_context(|| "Unable to serialize object into bincode".to_string())?,
+            DataFormat::Json => serde_json::to_vec(&self.val)
+                .with_context(|| "Unable to serialize object into JSON".to_string())?,
+        };
 
         if let Some(file_thread) = self.file_thread.take() {
             file_thread
@@ -190,6 +202,7 @@ where
     /// ```
     /// # use file_linked::*;
     /// # use file_linked::error::Error;
+    /// # use file_linked::constants::data_format::DataFormat;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -209,7 +222,7 @@ where
     ///     c: 0.0
     /// };
     ///
-    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"))
+    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Bincode)
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
@@ -239,6 +252,7 @@ where
     /// ```
     /// # use file_linked::*;
     /// # use file_linked::error::Error;
+    /// # use file_linked::constants::data_format::DataFormat;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -258,7 +272,7 @@ where
     ///     c: 0.0
     /// };
     ///
-    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"))
+    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Bincode)
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, 1);
@@ -295,6 +309,7 @@ where
     /// ```
     /// # use file_linked::*;
     /// # use file_linked::error::Error;
+    /// # use file_linked::constants::data_format::DataFormat;
     /// # use serde::{Deserialize, Serialize};
     /// # use std::fmt;
     /// # use std::string::ToString;
@@ -327,7 +342,7 @@ where
     ///
     /// bincode::serialize_into(file, &test).expect("Unable to serialize object");
     ///
-    /// let mut linked_test = FileLinked::<Test>::from_file(&path)
+    /// let mut linked_test = FileLinked::<Test>::from_file(&path, DataFormat::Bincode)
     ///     .expect("Unable to create file linked object");
     ///
     /// assert_eq!(linked_test.readonly().a, test.a);
@@ -341,7 +356,7 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_file(path: &Path) -> Result<FileLinked<T>, Error> {
+    pub fn from_file(path: &Path, data_format: DataFormat) -> Result<FileLinked<T>, Error> {
         let mut temp_file_path = path.to_path_buf();
         temp_file_path.set_file_name(format!(
             ".temp{}",
@@ -352,15 +367,21 @@ where
         ));
 
         match File::open(path).map_err(Error::from).and_then(|file| {
-            bincode::deserialize_from::<File, T>(file)
-                .with_context(|| format!("Unable to deserialize file {}", path.display()))
-                .map_err(Error::from)
+            match data_format {
+                DataFormat::Bincode => bincode::deserialize_from::<File, T>(file)
+                    .with_context(|| format!("Unable to deserialize file {}", path.display()))
+                    .map_err(Error::from),
+                DataFormat::Json => serde_json::from_reader(file)
+                    .with_context(|| format!("Unable to deserialize file {}", path.display()))
+                    .map_err(Error::from),
+            }
         }) {
             Ok(val) => Ok(FileLinked {
                 val,
                 path: path.to_path_buf(),
                 temp_file_path,
                 file_thread: None,
+                data_format,
             }),
             Err(err) => {
                 info!(
@@ -370,7 +391,7 @@ where
                 );
 
                 // Try to use temp file instead and see if that file exists and is serializable
-                let val = FileLinked::from_temp_file(&temp_file_path, path)
+                let val = FileLinked::from_temp_file(&temp_file_path, path, &data_format)
                     .map_err(|_| err)
                     .with_context(|| format!("Failed to read/deserialize the object from the file {} and temp file {}", path.display(), temp_file_path.display()))?;
 
@@ -379,21 +400,30 @@ where
                     path: path.to_path_buf(),
                     temp_file_path,
                     file_thread: None,
+                    data_format,
                 })
             }
         }
     }
 
-    fn from_temp_file(temp_file_path: &Path, path: &Path) -> Result<T, Error> {
+    fn from_temp_file(temp_file_path: &Path, path: &Path, data_format: &DataFormat) -> Result<T, Error> {
         let file = File::open(temp_file_path)
             .with_context(|| format!("Unable to open file {}", temp_file_path.display()))?;
 
-        let val = bincode::deserialize_from(file).with_context(|| {
-            format!(
-                "Could not deserialize from temp file {}",
-                temp_file_path.display()
-            )
-        })?;
+        let val = match data_format {
+            DataFormat::Bincode => bincode::deserialize_from(file).with_context(|| {
+                format!(
+                    "Could not deserialize from temp file {}",
+                    temp_file_path.display()
+                )
+            })?,
+            DataFormat::Json => serde_json::from_reader(file).with_context(|| {
+                format!(
+                    "Could not deserialize from temp file {}",
+                    temp_file_path.display()
+                )
+            })?,
+        };
 
         info!("Successfully deserialized value from temp file");
 
@@ -441,7 +471,7 @@ mod tests {
         cleanup.run(|p| {
             let val = vec!["one", "two", ""];
 
-            let linked_object = FileLinked::new(val.clone(), &p)?;
+            let linked_object = FileLinked::new(val.clone(), &p, DataFormat::Json)?;
             assert_eq!(*linked_object.readonly(), val);
 
             Ok(())
@@ -455,7 +485,7 @@ mod tests {
         cleanup.run(|p| {
             let val = "test";
 
-            FileLinked::new(val, &p)?;
+            FileLinked::new(val, &p, DataFormat::Bincode)?;
 
             let file = File::open(&p)?;
             let result: String =
@@ -472,7 +502,7 @@ mod tests {
         let cleanup = CleanUp::new(&path);
         cleanup.run(|p| {
             let list = vec![1, 2, 3, 4];
-            let mut file_linked_list = FileLinked::new(list, &p)?;
+            let mut file_linked_list = FileLinked::new(list, &p, DataFormat::Json)?;
             assert_eq!(*file_linked_list.readonly(), vec![1, 2, 3, 4]);
 
             file_linked_list.mutate(|v1| v1.push(5))?;
@@ -493,7 +523,7 @@ mod tests {
         cleanup.run(|p| {
             let val1 = String::from("val1");
             let val2 = String::from("val2");
-            let mut file_linked_list = FileLinked::new(val1.clone(), &p)?;
+            let mut file_linked_list = FileLinked::new(val1.clone(), &p, DataFormat::Bincode)?;
             assert_eq!(*file_linked_list.readonly(), val1);
 
             file_linked_list.replace(val2.clone())?;
@@ -515,7 +545,7 @@ mod tests {
             bincode::serialize_into(&file, &value).expect("Unable to serialize into file");
             drop(file);
 
-            let linked_object: FileLinked<Vec<f64>> = FileLinked::from_file(&p)?;
+            let linked_object: FileLinked<Vec<f64>> = FileLinked::from_file(&p, DataFormat::Bincode)?;
             assert_eq!(*linked_object.readonly(), value);
 
             drop(linked_object);

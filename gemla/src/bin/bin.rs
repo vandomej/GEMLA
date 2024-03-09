@@ -6,6 +6,7 @@ extern crate log;
 mod test_state;
 
 use easy_parallel::Parallel;
+use file_linked::constants::data_format::DataFormat;
 use gemla::{
     core::{Gemla, GemlaConfig},
     error::{log_error, Error},
@@ -57,6 +58,7 @@ fn main() -> anyhow::Result<()> {
                         generations_per_node: 3,
                         overwrite: true,
                     },
+                    DataFormat::Json,
                 ))?;
 
                 log_error(gemla.simulate(3).await)?;
