@@ -1,18 +1,18 @@
 extern crate fann;
 
-use std::{fs::{self, File}, path::PathBuf};
+use std::{fs, path::PathBuf};
 use fann::{ActivationFunc, Fann};
 use gemla::{core::genetic_node::GeneticNode, error::Error};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use anyhow::Context;
 use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct Config {
-    base_dir: String,
-}
+const BASE_DIR: &str = "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Simulations";
+const POPULATION: usize = 100;
+const NEURAL_NETWORK_SHAPE: &[u32; 3] = &[10, 10, 10];
+const SIMULATION_ROUNDS: usize = 10;
+const SURVIVAL_RATE: f32 = 0.5;
 
 // Here is the folder structure for the FighterNN:
 // base_dir/fighter_nn_{fighter_id}/{generation}/{fighter_id}_fighter_nn_{nn_id}.net
@@ -37,16 +37,7 @@ pub struct FighterNN {
 impl GeneticNode for FighterNN {
     // Check for the highest number of the folder name and increment it by 1
     fn initialize() -> Result<Box<Self>, Error> {
-        // Load the configuration
-        let config: Config = serde_json::from_reader(File::open("config.json")?)
-            .with_context(|| format!("Failed to read config"))?;
-        
-        let base_path = PathBuf::from(config.base_dir);
-
-        // Ensure the base directory exists, create it if not
-        if !base_path.exists() {
-            fs::create_dir_all(&base_path)?;
-        }
+        let base_path = PathBuf::from(BASE_DIR);
 
         let mut highest = 0;
         let mut folder = base_path.join(format!("fighter_nn_{:06}", highest));
@@ -62,10 +53,10 @@ impl GeneticNode for FighterNN {
         fs::create_dir(&gen_folder)?;
 
         // Create the first generation in this folder
-        for i in 0..10 {
+        for i in 0..POPULATION {
             // Filenames are stored in the format of "xxxxxx_fighter_nn_0.net", "xxxxxx_fighter_nn_1.net", etc. Where xxxxxx is the folder name
             let nn = gen_folder.join(format!("{:06}_fighter_nn_{}.net", highest, i));
-            let mut fann = Fann::new(&[10, 10, 10])
+            let mut fann = Fann::new(NEURAL_NETWORK_SHAPE)
                 .with_context(|| format!("Failed to create nn"))?;
             fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
             fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
@@ -83,7 +74,7 @@ impl GeneticNode for FighterNN {
 
     fn simulate(&mut self) -> Result<(), Error> {
         // For each nn in the current generation:
-        for i in 0..10 {
+        for i in 0..POPULATION {
             // load the nn
             let nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, i));
             let fann = Fann::from_file(&nn)
@@ -93,8 +84,8 @@ impl GeneticNode for FighterNN {
             let mut score = 0.0;
 
             // Using the same original nn, repeat the simulation with 5 random nn's from the current generation
-            for _ in 0..5 {
-                let random_nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, thread_rng().gen_range(0..10)));
+            for _ in 0..SIMULATION_ROUNDS {
+                let random_nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, thread_rng().gen_range(0..POPULATION)));
                 let random_fann = Fann::from_file(&random_nn)
                     .with_context(|| format!("Failed to load random nn"))?;
 
@@ -114,7 +105,7 @@ impl GeneticNode for FighterNN {
             }
 
             score /= 5.0;
-            self.scores[self.generation as usize].insert(i, score);
+            self.scores[self.generation as usize].insert(i as u64, score);
         }
 
         Ok(())
@@ -122,6 +113,8 @@ impl GeneticNode for FighterNN {
 
 
     fn mutate(&mut self) -> Result<(), Error> {
+        let survivor_count = (POPULATION as f32 * SURVIVAL_RATE) as usize;
+
         // Create the new generation folder
         let new_gen_folder = self.folder.join(format!("{}", self.generation + 1));
         fs::create_dir(&new_gen_folder)?;
@@ -129,10 +122,10 @@ impl GeneticNode for FighterNN {
         // Remove the 5 nn's with the lowest scores
         let mut sorted_scores: Vec<_> = self.scores[self.generation as usize].iter().collect();
         sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
-        let to_keep = sorted_scores[5..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
+        let to_keep = sorted_scores[survivor_count..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
 
         // Save the remaining 5 nn's to the new generation folder
-        for i in 0..5 {
+        for i in 0..survivor_count {
             let nn_id = to_keep[i];
             let nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, nn_id));
             let new_nn = new_gen_folder.join(format!("{:06}_fighter_nn_{}.net", self.id, i));
@@ -140,7 +133,7 @@ impl GeneticNode for FighterNN {
         }
 
         // Take the remaining 5 nn's and create 5 new nn's by the following:
-        for i in 0..5 {
+        for i in 0..survivor_count {
             let nn_id = to_keep[i];
             let nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, nn_id));
             let mut fann = Fann::from_file(&nn)
@@ -159,7 +152,7 @@ impl GeneticNode for FighterNN {
             fann.set_connections(&connections);
 
             // Save the new nn's to the new generation folder
-            let new_nn = new_gen_folder.join(format!("{:06}_fighter_nn_{}.net", self.id, i + 5));
+            let new_nn = new_gen_folder.join(format!("{:06}_fighter_nn_{}.net", self.id, i + survivor_count));
             fann.save(&new_nn)
                 .with_context(|| format!("Failed to save nn"))?;
         }
@@ -171,18 +164,9 @@ impl GeneticNode for FighterNN {
     }
 
     fn merge(left: &FighterNN, right: &FighterNN) -> Result<Box<FighterNN>, Error> {
+        let base_path = PathBuf::from(BASE_DIR);
+
         // Find next highest
-        // Load the configuration
-        let config: Config = serde_json::from_reader(File::open("config.json")?)
-            .with_context(|| format!("Failed to read config"))?;
-        
-        let base_path = PathBuf::from(config.base_dir);
-
-        // Ensure the base directory exists, create it if not
-        if !base_path.exists() {
-            fs::create_dir_all(&base_path)?;
-        }
-
         let mut highest = 0;
         let mut folder = base_path.join(format!("fighter_nn_{:06}", highest));
         while folder.exists() {
@@ -199,8 +183,8 @@ impl GeneticNode for FighterNN {
         // Take the 5 nn's with the highest scores from the left nn's and save them to the new fighter folder
         let mut sorted_scores: Vec<_> = left.scores[left.generation as usize].iter().collect();
         sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
-        let mut remaining = sorted_scores[5..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
-        for i in 0..5 {
+        let mut remaining = sorted_scores[(POPULATION / 2)..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
+        for i in 0..(POPULATION / 2) {
             let nn = left.folder.join(format!("{}", left.generation)).join(format!("{:06}_fighter_nn_{}.net", left.id, remaining.pop().unwrap()));
             let new_nn = folder.join(format!("0")).join(format!("{:06}_fighter_nn_{}.net", highest, i));
             trace!("From: {:?}, To: {:?}", &nn, &new_nn);
@@ -211,8 +195,8 @@ impl GeneticNode for FighterNN {
         // Take the 5 nn's with the highest scores from the right nn's and save them to the new fighter folder
         sorted_scores = right.scores[right.generation as usize].iter().collect();
         sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
-        remaining = sorted_scores[5..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
-        for i in 5..10 {
+        remaining = sorted_scores[(POPULATION / 2)..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
+        for i in (POPULATION / 2)..POPULATION {
             let nn = right.folder.join(format!("{}", right.generation)).join(format!("{:06}_fighter_nn_{}.net", right.id, remaining.pop().unwrap()));
             let new_nn = folder.join(format!("0")).join(format!("{:06}_fighter_nn_{}.net", highest, i));
             trace!("From: {:?}, To: {:?}", &nn, &new_nn);
