@@ -195,7 +195,7 @@ where
                 {
                     info!("Merging nodes {} and {}", l.val.id(), r.val.id());
                     if let (Some(left_node), Some(right_node)) = (l.val.as_ref(), r.val.as_ref()) {
-                        let merged_node = GeneticNode::merge(left_node, right_node)?;
+                        let merged_node = GeneticNode::merge(left_node, right_node, &tree.val.id())?;
                         tree.val = GeneticNodeWrapper::from(
                             *merged_node,
                             tree.val.max_generations(),
@@ -337,6 +337,8 @@ mod tests {
     use std::path::PathBuf;
     use std::fs;
 
+    use self::genetic_node::GeneticNodeContext;
+
     struct CleanUp {
         path: PathBuf,
     }
@@ -367,20 +369,20 @@ mod tests {
     }
 
     impl genetic_node::GeneticNode for TestState {
-        fn simulate(&mut self) -> Result<(), Error> {
+        fn simulate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
             self.score += 1.0;
             Ok(())
         }
 
-        fn mutate(&mut self) -> Result<(), Error> {
+        fn mutate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
             Ok(())
         }
 
-        fn initialize() -> Result<Box<TestState>, Error> {
+        fn initialize(_context: &GeneticNodeContext) -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
 
-        fn merge(left: &TestState, right: &TestState) -> Result<Box<TestState>, Error> {
+        fn merge(left: &TestState, right: &TestState, _id: &Uuid) -> Result<Box<TestState>, Error> {
             Ok(Box::new(if left.score > right.score {
                 left.clone()
             } else {

@@ -24,6 +24,12 @@ pub enum GeneticState {
     Finish,
 }
 
+pub struct GeneticNodeContext {
+    pub generation: u64,
+    pub max_generations: u64,
+    pub id: Uuid,
+}
+
 /// A trait used to interact with the internal state of nodes within the [`Bracket`]
 ///
 /// [`Bracket`]: crate::bracket::Bracket
@@ -32,17 +38,17 @@ pub trait GeneticNode {
     ///
     /// # Examples
     /// TODO
-    fn initialize() -> Result<Box<Self>, Error>;
+    fn initialize(context: &GeneticNodeContext) -> Result<Box<Self>, Error>;
 
-    fn simulate(&mut self) -> Result<(), Error>;
+    fn simulate(&mut self, context: &GeneticNodeContext) -> Result<(), Error>;
 
     /// Mutates members in a population and/or crossbreeds them to produce new offspring.
     ///
     /// # Examples
     /// TODO
-    fn mutate(&mut self) -> Result<(), Error>;
+    fn mutate(&mut self, context: &GeneticNodeContext) -> Result<(), Error>;
 
-    fn merge(left: &Self, right: &Self) -> Result<Box<Self>, Error>;
+    fn merge(left: &Self, right: &Self, id: &Uuid) -> Result<Box<Self>, Error>;
 }
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
@@ -101,18 +107,28 @@ where
         self.max_generations
     }
 
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     pub fn state(&self) -> GeneticState {
         self.state
     }
 
     pub fn process_node(&mut self) -> Result<GeneticState, Error> {
+        let context = GeneticNodeContext {
+            generation: self.generation,
+            max_generations: self.max_generations,
+            id: self.id,
+        };
+
         match (self.state, &mut self.node) {
             (GeneticState::Initialize, _) => {
-                self.node = Some(*T::initialize()?);
+                self.node = Some(*T::initialize(&context)?);
                 self.state = GeneticState::Simulate;
             }
             (GeneticState::Simulate, Some(n)) => {
-                n.simulate()
+                n.simulate(&context)
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
 
                 self.state = if self.generation >= self.max_generations {
@@ -122,7 +138,7 @@ where
                 };
             }
             (GeneticState::Mutate, Some(n)) => {
-                n.mutate()
+                n.mutate(&context)
                     .with_context(|| format!("Error mutating node: {:?}", self))?;
 
                 self.generation += 1;
@@ -148,20 +164,20 @@ mod tests {
     }
 
     impl GeneticNode for TestState {
-        fn simulate(&mut self) -> Result<(), Error> {
+        fn simulate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
             self.score += 1.0;
             Ok(())
         }
 
-        fn mutate(&mut self) -> Result<(), Error> {
+        fn mutate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
             Ok(())
         }
 
-        fn initialize() -> Result<Box<TestState>, Error> {
+        fn initialize(_context: &GeneticNodeContext) -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
 
-        fn merge(_l: &TestState, _r: &TestState) -> Result<Box<TestState>, Error> {
+        fn merge(_l: &TestState, _r: &TestState, _id: &Uuid) -> Result<Box<TestState>, Error> {
             Err(Error::Other(anyhow!("Unable to merge")))
         }
     }

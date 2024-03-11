@@ -1,6 +1,7 @@
-use gemla::{core::genetic_node::GeneticNode, error::Error};
+use gemla::{core::genetic_node::{GeneticNode, GeneticNodeContext}, error::Error};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 const POPULATION_SIZE: u64 = 5;
 const POPULATION_REDUCTION_SIZE: u64 = 3;
@@ -11,7 +12,7 @@ pub struct TestState {
 }
 
 impl GeneticNode for TestState {
-    fn initialize() -> Result<Box<Self>, Error> {
+    fn initialize(_context: &GeneticNodeContext) -> Result<Box<Self>, Error> {
         let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
@@ -21,7 +22,7 @@ impl GeneticNode for TestState {
         Ok(Box::new(TestState { population }))
     }
 
-    fn simulate(&mut self) -> Result<(), Error> {
+    fn simulate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         self.population = self
@@ -33,7 +34,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn mutate(&mut self) -> Result<(), Error> {
+    fn mutate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         let mut v = self.population.clone();
@@ -71,7 +72,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn merge(left: &TestState, right: &TestState) -> Result<Box<TestState>, Error> {
+    fn merge(left: &TestState, right: &TestState, id: &Uuid) -> Result<Box<TestState>, Error> {
         let mut v = left.population.clone();
         v.append(&mut right.population.clone());
 
@@ -82,7 +83,11 @@ impl GeneticNode for TestState {
 
         let mut result = TestState { population: v };
 
-        result.mutate()?;
+        result.mutate(&GeneticNodeContext {
+            id: id.clone(),
+            generation: 0,
+            max_generations: 0,
+        })?;
 
         Ok(Box::new(result))
     }
@@ -95,7 +100,13 @@ mod tests {
 
     #[test]
     fn test_initialize() {
-        let state = TestState::initialize().unwrap();
+        let state = TestState::initialize(
+            &GeneticNodeContext {
+                id: Uuid::new_v4(),
+                generation: 0,
+                max_generations: 0,
+            }
+        ).unwrap();
 
         assert_eq!(state.population.len(), POPULATION_SIZE as usize);
     }
@@ -108,14 +119,32 @@ mod tests {
 
         let original_population = state.population.clone();
 
-        state.simulate().unwrap();
+        state.simulate(
+            &GeneticNodeContext {
+                id: Uuid::new_v4(),
+                generation: 0,
+                max_generations: 0,
+            }
+        ).unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
             .all(|(&a, &b)| b >= a - 1 && b <= a + 2));
 
-        state.simulate().unwrap();
-        state.simulate().unwrap();
+        state.simulate(
+            &GeneticNodeContext {
+                id: Uuid::new_v4(),
+                generation: 0,
+                max_generations: 0,
+            }
+        ).unwrap();
+        state.simulate(
+            &GeneticNodeContext {
+                id: Uuid::new_v4(),
+                generation: 0,
+                max_generations: 0,
+            }
+        ).unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
@@ -128,7 +157,13 @@ mod tests {
             population: vec![4, 3, 3],
         };
 
-        state.mutate().unwrap();
+        state.mutate(
+            &GeneticNodeContext {
+                id: Uuid::new_v4(),
+                generation: 0,
+                max_generations: 0,
+            }
+        ).unwrap();
 
         assert_eq!(state.population.len(), POPULATION_SIZE as usize);
     }
@@ -143,7 +178,7 @@ mod tests {
             population: vec![0, 1, 3, 7],
         };
 
-        let merged_state = TestState::merge(&state1, &state2).unwrap();
+        let merged_state = TestState::merge(&state1, &state2, &Uuid::new_v4()).unwrap();
 
         assert_eq!(merged_state.population.len(), POPULATION_SIZE as usize);
         assert!(merged_state.population.iter().any(|&x| x == 7));
