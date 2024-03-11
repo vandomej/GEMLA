@@ -4,6 +4,7 @@ extern crate gemla;
 extern crate log;
 
 mod test_state;
+mod fighter_nn;
 
 use easy_parallel::Parallel;
 use file_linked::constants::data_format::DataFormat;
@@ -13,7 +14,7 @@ use gemla::{
 };
 use smol::{channel, channel::RecvError, future, Executor};
 use std::{path::PathBuf, time::Instant};
-use test_state::TestState;
+use fighter_nn::FighterNN;
 use clap::Parser;
 
 #[derive(Parser)]
@@ -52,7 +53,7 @@ fn main() -> anyhow::Result<()> {
                 let args = Args::parse();
 
                 // Checking that the first argument <FILE> is a valid file
-                let mut gemla = log_error(Gemla::<TestState>::new(
+                let mut gemla = log_error(Gemla::<FighterNN>::new(
                     &PathBuf::from(args.file),
                     GemlaConfig {
                         generations_per_node: 3,
