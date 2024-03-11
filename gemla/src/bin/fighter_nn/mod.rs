@@ -40,26 +40,30 @@ impl GeneticNode for FighterNN {
     // Check for the highest number of the folder name and increment it by 1
     fn initialize(context: &GeneticNodeContext) -> Result<Box<Self>, Error> {
         let base_path = PathBuf::from(BASE_DIR);
-
-        let mut folder = base_path.join(format!("fighter_nn_{:06}", context.id));
-        fs::create_dir(&folder)?;
-
-        //Create a new directory for the first generation
+    
+        let folder = base_path.join(format!("fighter_nn_{:06}", context.id));
+        // Ensures directory is created if it doesn't exist and does nothing if it exists
+        fs::create_dir_all(&folder)
+            .with_context(|| format!("Failed to create or access the folder: {:?}", folder))?;
+    
+        //Create a new directory for the first generation, using create_dir_all to avoid errors if it already exists
         let gen_folder = folder.join("0");
-        fs::create_dir(&gen_folder)?;
-
+        fs::create_dir_all(&gen_folder)
+            .with_context(|| format!("Failed to create or access the generation folder: {:?}", gen_folder))?;
+    
         // Create the first generation in this folder
         for i in 0..POPULATION {
             // Filenames are stored in the format of "xxxxxx_fighter_nn_0.net", "xxxxxx_fighter_nn_1.net", etc. Where xxxxxx is the folder name
             let nn = gen_folder.join(format!("{:06}_fighter_nn_{}.net", context.id, i));
             let mut fann = Fann::new(NEURAL_NETWORK_SHAPE)
-                .with_context(|| format!("Failed to create nn"))?;
+                .with_context(|| "Failed to create nn")?;
             fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
             fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
+            // This will overwrite any existing file with the same name
             fann.save(&nn)
-                .with_context(|| format!("Failed to save nn"))?;
+                .with_context(|| format!("Failed to save nn at {:?}", nn))?;
         }
-
+    
         Ok(Box::new(FighterNN {
             id: context.id,
             folder,
@@ -114,7 +118,7 @@ impl GeneticNode for FighterNN {
 
         // Create the new generation folder
         let new_gen_folder = self.folder.join(format!("{}", self.generation + 1));
-        fs::create_dir(&new_gen_folder)?;
+        fs::create_dir_all(&new_gen_folder).with_context(|| format!("Failed to create or access new generation folder: {:?}", new_gen_folder))?;
 
         // Remove the 5 nn's with the lowest scores
         let mut sorted_scores: Vec<_> = self.scores[self.generation as usize].iter().collect();
@@ -195,44 +199,36 @@ impl GeneticNode for FighterNN {
 
     fn merge(left: &FighterNN, right: &FighterNN, id: &Uuid) -> Result<Box<FighterNN>, Error> {
         let base_path = PathBuf::from(BASE_DIR);
-
-        // Find next highest
         let folder = base_path.join(format!("fighter_nn_{:06}", id));
-        fs::create_dir(&folder)?;
-
-        //Create a new directory for the first generation
-        let gen_folder = folder.join("0");
-        fs::create_dir(&gen_folder)?;
-
-        // Take the 5 nn's with the highest scores from the left nn's and save them to the new fighter folder
-        let mut sorted_scores: Vec<_> = left.scores[left.generation as usize].iter().collect();
-        sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
-        let mut remaining = sorted_scores[(left.population_size / 2)..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
-        for i in 0..(left.population_size / 2) {
-            let nn = left.folder.join(format!("{}", left.generation)).join(format!("{:06}_fighter_nn_{}.net", left.id, remaining.pop().unwrap()));
-            let new_nn = folder.join(format!("0")).join(format!("{:06}_fighter_nn_{}.net", id, i));
-            trace!("From: {:?}, To: {:?}", &nn, &new_nn);
-            fs::copy(&nn, &new_nn)
-                .with_context(|| format!("Failed to copy left nn"))?;
-        }
-
-        // Take the 5 nn's with the highest scores from the right nn's and save them to the new fighter folder
-        sorted_scores = right.scores[right.generation as usize].iter().collect();
-        sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
-        remaining = sorted_scores[(right.population_size / 2)..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
-        for i in (right.population_size / 2)..right.population_size {
-            let nn = right.folder.join(format!("{}", right.generation)).join(format!("{:06}_fighter_nn_{}.net", right.id, remaining.pop().unwrap()));
-            let new_nn = folder.join(format!("0")).join(format!("{:06}_fighter_nn_{}.net", id, i));
-            trace!("From: {:?}, To: {:?}", &nn, &new_nn);
-            fs::copy(&nn, &new_nn)
-                .with_context(|| format!("Failed to copy right nn"))?;
-        }
-
+    
+        // Ensure the folder exists, including the generation subfolder.
+        fs::create_dir_all(&folder.join("0"))
+            .with_context(|| format!("Failed to create directory {:?}", folder.join("0")))?;
+    
+        // Function to copy NNs from a source FighterNN to the new folder.
+        let copy_nns = |source: &FighterNN, folder: &PathBuf, id: &Uuid, start_idx: usize| -> Result<(), Error> {
+            let mut sorted_scores: Vec<_> = source.scores[source.generation as usize].iter().collect();
+            sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
+            let remaining = sorted_scores[(source.population_size / 2)..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
+    
+            for (i, nn_id) in remaining.into_iter().enumerate() {
+                let nn_path = source.folder.join(source.generation.to_string()).join(format!("{:06}_fighter_nn_{}.net", source.id, nn_id));
+                let new_nn_path = folder.join("0").join(format!("{:06}_fighter_nn_{}.net", id, start_idx + i));
+                fs::copy(&nn_path, &new_nn_path)
+                    .with_context(|| format!("Failed to copy nn from {:?} to {:?}", nn_path, new_nn_path))?;
+            }
+            Ok(())
+        };
+    
+        // Copy the top half of NNs from each parent to the new folder.
+        copy_nns(left, &folder, id, 0)?;
+        copy_nns(right, &folder, id, left.population_size as usize / 2)?;
+    
         Ok(Box::new(FighterNN {
             id: *id,
             folder,
             generation: 0,
-            population_size: POPULATION,
+            population_size: left.population_size, // Assuming left and right have the same population size.
             scores: vec![HashMap::new()],
         }))
     }

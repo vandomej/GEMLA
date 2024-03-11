@@ -55,7 +55,7 @@ type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 /// ```
 #[derive(Serialize, Deserialize, Copy, Clone)]
 pub struct GemlaConfig {
-    pub generations_per_node: u64,
+    pub generations_per_height: u64,
     pub overwrite: bool,
 }
 
@@ -103,12 +103,22 @@ where
     }
 
     pub async fn simulate(&mut self, steps: u64) -> Result<(), Error> {
-        // Before we can process nodes we must create blank nodes in their place to keep track of which nodes have been processed
-        // in the tree and which nodes have not.
-        self.data.mutate(|(d, c)| {
-            let mut tree: Option<SimulationTree<T>> = Gemla::increase_height(d.take(), c, steps);
-            mem::swap(d, &mut tree);
-        })?;
+        // Only increase height if the tree is uninitialized or completed
+        if self.tree_ref().is_none() || 
+            self
+                .tree_ref()
+                .map(|t| Gemla::is_completed(t))
+                .unwrap_or(true)
+        {
+            // Before we can process nodes we must create blank nodes in their place to keep track of which nodes have been processed
+            // in the tree and which nodes have not.
+            self.data.mutate(|(d, c)| {
+                let mut tree: Option<SimulationTree<T>> = Gemla::increase_height(d.take(), c, steps);
+                mem::swap(d, &mut tree);
+            })?;
+        }
+
+        
 
         info!(
             "Height of simulation tree increased to {}",
@@ -286,16 +296,16 @@ where
         if amount == 0 {
             tree
         } else {
-            let left_branch_right =
+            let left_branch_height =
                 tree.as_ref().map(|t| t.height() as u64).unwrap_or(0) + amount - 1;
             
             Some(Box::new(Tree::new(
-                GeneticNodeWrapper::new(config.generations_per_node),
+                GeneticNodeWrapper::new(config.generations_per_height),
                 Gemla::increase_height(tree, config, amount - 1),
                 // The right branch height has to equal the left branches total height
-                if left_branch_right > 0 {
+                if left_branch_height > 0 {
                     Some(Box::new(btree!(GeneticNodeWrapper::new(
-                        left_branch_right * config.generations_per_node
+                        left_branch_height * config.generations_per_height
                     ))))
                 } else {
                     None
@@ -399,7 +409,7 @@ mod tests {
 
             // Testing initial creation
             let mut config = GemlaConfig {
-                generations_per_node: 1,
+                generations_per_height: 1,
                 overwrite: true
             };
             let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
@@ -439,7 +449,7 @@ mod tests {
         CleanUp::new(&path).run(|p| {
             // Testing initial creation
             let config = GemlaConfig {
-                generations_per_node: 10,
+                generations_per_height: 10,
                 overwrite: true
             };
             let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;

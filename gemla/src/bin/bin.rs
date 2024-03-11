@@ -56,15 +56,15 @@ fn main() -> anyhow::Result<()> {
                 let mut gemla = log_error(Gemla::<FighterNN>::new(
                     &PathBuf::from(args.file),
                     GemlaConfig {
-                        generations_per_node: 3,
-                        overwrite: true,
+                        generations_per_height: 3,
+                        overwrite: false,
                     },
                     DataFormat::Json,
                 ))?;
 
-                log_error(gemla.simulate(3).await)?;
-
-                Ok(())
+                loop {
+                    log_error(gemla.simulate(5).await)?;
+                }
             })
         });
 
