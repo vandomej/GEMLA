@@ -89,6 +89,7 @@ impl GeneticNode for TestState {
             id: id.clone(),
             generation: 0,
             max_generations: 0,
+            semaphore: None,
         })?;
 
         Ok(Box::new(result))
@@ -107,6 +108,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
+                semaphore: None,
             }
         ).unwrap();
 
@@ -126,6 +128,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
+                semaphore: None,
             }
         ).await.unwrap();
         assert!(original_population
@@ -138,6 +141,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
+                semaphore: None,
             }
         ).await.unwrap();
         state.simulate(
@@ -145,6 +149,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
+                semaphore: None,
             }
         ).await.unwrap();
         assert!(original_population
@@ -164,6 +169,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
+                semaphore: None,
             }
         ).unwrap();
 

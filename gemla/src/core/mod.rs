@@ -10,9 +10,9 @@ use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use log::{info, trace, warn};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::task::JoinHandle;
+use tokio::sync::Semaphore;
 use std::{
-    collections::HashMap, fmt::Debug, fs::File, io::ErrorKind, marker::Send, mem, path::Path,
-    time::Instant,
+    collections::HashMap, fmt::Debug, fs::File, io::ErrorKind, marker::Send, mem, path::Path, sync::Arc, time::Instant
 };
 use uuid::Uuid;
 
@@ -58,6 +58,7 @@ type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 pub struct GemlaConfig {
     pub generations_per_height: u64,
     pub overwrite: bool,
+    pub shared_semaphore_concurrency_limit: usize,
 }
 
 /// Creates a tournament style bracket for simulating and evaluating nodes of type `T` implementing [`GeneticNode`].
@@ -72,6 +73,7 @@ where
 {
     pub data: FileLinked<(Option<SimulationTree<T>>, GemlaConfig)>,
     threads: HashMap<Uuid, JoinHandle<Result<GeneticNodeWrapper<T>, Error>>>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl<T: 'static> Gemla<T>
@@ -89,11 +91,13 @@ where
                     FileLinked::from_file(path, data_format)?
                 },
                 threads: HashMap::new(),
+                semaphore: Arc::new(Semaphore::new(config.shared_semaphore_concurrency_limit)),
             }),
             // If the file doesn't exist we must create it
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
                 data: FileLinked::new((None, config), path, data_format)?,
                 threads: HashMap::new(),
+                semaphore: Arc::new(Semaphore::new(config.shared_semaphore_concurrency_limit)),
             }),
             Err(error) => Err(Error::IO(error)),
         }
@@ -147,9 +151,11 @@ where
             {
                 trace!("Adding node to process list {}", node.id());
 
+                let semaphore = self.semaphore.clone();
+
                 self.threads
                     .insert(node.id(), tokio::spawn(async move {
-                        Gemla::process_node(node).await
+                        Gemla::process_node(node, semaphore).await
                     }));
             } else {
                 trace!("No node found to process, joining threads");
@@ -323,15 +329,15 @@ where
         tree.val.state() == GeneticState::Finish 
     }
 
-    async fn process_node(mut node: GeneticNodeWrapper<T>) -> Result<GeneticNodeWrapper<T>, Error> {
+    async fn process_node(mut node: GeneticNodeWrapper<T>, semaphore: Arc<Semaphore>) -> Result<GeneticNodeWrapper<T>, Error> {
         let node_state_time = Instant::now();
         let node_state = node.state();
 
-        node.process_node().await?;
+        node.process_node(semaphore.clone()).await?;
 
         if node.state() == GeneticState::Simulate
         {
-            node.process_node().await?;
+            node.process_node(semaphore.clone()).await?;
         }
 
         trace!(
@@ -427,6 +433,7 @@ mod tests {
                     let mut config = GemlaConfig {
                         generations_per_height: 1,
                         overwrite: true,
+                        shared_semaphore_concurrency_limit: 1,
                     };
                     let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
@@ -476,6 +483,7 @@ mod tests {
                     let config = GemlaConfig {
                         generations_per_height: 10,
                         overwrite: true,
+                        shared_semaphore_concurrency_limit: 1,
                     };
                     let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 

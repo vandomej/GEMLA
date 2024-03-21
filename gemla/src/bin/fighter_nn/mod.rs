@@ -1,6 +1,6 @@
 extern crate fann;
 
-use std::{fs::{self, File}, io::{self, BufRead, BufReader}, path::{Path, PathBuf}};
+use std::{fs::{self, File}, io::{self, BufRead, BufReader}, path::{Path, PathBuf}, sync::Arc};
 use fann::{ActivationFunc, Fann};
 use futures::future::join_all;
 use gemla::{core::genetic_node::{GeneticNode, GeneticNodeContext}, error::Error};
@@ -8,9 +8,9 @@ use rand::prelude::*;
 use rand::distributions::{Distribution, Uniform};
 use serde::{Deserialize, Serialize};
 use anyhow::Context;
+use tokio::process::Command;
 use uuid::Uuid;
 use std::collections::HashMap;
-use tokio::process::Command;
 use async_trait::async_trait;
 
 const BASE_DIR: &str = "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Simulations";
@@ -79,82 +79,116 @@ impl GeneticNode for FighterNN {
         }))
     }
 
-    async fn simulate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
+    async fn simulate(&mut self, context: GeneticNodeContext) -> Result<(), Error> {
+        trace!("Context: {:?}", context);
+        let mut tasks = Vec::new();
+
         // For each nn in the current generation:
         for i in 0..self.population_size {
-            // load the nn
-            let nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, i));
-            let mut simulations = Vec::new();
-    
-            // Using the same original nn, repeat the simulation with 5 random nn's from the current generation concurrently
-            for _ in 0..SIMULATION_ROUNDS {
-                let random_nn_index = thread_rng().gen_range(0..self.population_size);
-                let id = self.id.clone();
-                let folder = self.folder.clone();
-                let generation = self.generation;
+            let self_clone = self.clone();
+            let semaphore_clone = Arc::clone(context.semaphore.as_ref().unwrap());
 
-                let random_nn = folder.join(format!("{}", generation)).join(format!("{:06}_fighter_nn_{}.net", id, random_nn_index));
-                let nn_clone = nn.clone(); // Clone the path to use in the async block
-    
-                let config1_arg = format!("-NN1Config=\"{}\"", nn_clone.to_str().unwrap());
-                let config2_arg = format!("-NN2Config=\"{}\"", random_nn.to_str().unwrap());
-                let disable_unreal_rendering_arg = "-nullrhi".to_string();
-    
-                let future = async move {
-                    // Construct the score file path
-                    let nn_id = format!("{:06}_fighter_nn_{}", id, i);
-                    let random_nn_id = format!("{:06}_fighter_nn_{}", id, random_nn_index);
-                    let score_file_name = format!("{}_vs_{}.txt", nn_id, random_nn_id);
-                    let score_file = folder.join(format!("{}", generation)).join(&score_file_name);
+            let task = async move {
+                let nn = self_clone.folder.join(format!("{}", self_clone.generation)).join(format!("{:06}_fighter_nn_{}.net", self_clone.id, i));
+                let mut simulations = Vec::new();
+        
+                // Using the same original nn, repeat the simulation with 5 random nn's from the current generation concurrently
+                for _ in 0..SIMULATION_ROUNDS {
+                    let random_nn_index = thread_rng().gen_range(0..self_clone.population_size);
+                    let id = self_clone.id.clone();
+                    let folder = self_clone.folder.clone();
+                    let generation = self_clone.generation;
+                    let semaphore_clone = Arc::clone(&semaphore_clone);
 
-                    // Check if score file already exists before running the simulation
-                    if score_file.exists() {
+                    let random_nn = folder.join(format!("{}", generation)).join(format!("{:06}_fighter_nn_{}.net", id, random_nn_index));
+                    let nn_clone = nn.clone(); // Clone the path to use in the async block
+        
+                    let config1_arg = format!("-NN1Config=\"{}\"", nn_clone.to_str().unwrap());
+                    let config2_arg = format!("-NN2Config=\"{}\"", random_nn.to_str().unwrap());
+                    let disable_unreal_rendering_arg = "-nullrhi".to_string();
+
+                    
+        
+                    let future = async move {
+                        let permit = semaphore_clone.acquire_owned().await.with_context(|| "Failed to acquire semaphore permit")?;
+
+                        // Construct the score file path
+                        let nn_id = format!("{:06}_fighter_nn_{}", id, i);
+                        let random_nn_id = format!("{:06}_fighter_nn_{}", id, random_nn_index);
+                        let score_file_name = format!("{}_vs_{}.txt", nn_id, random_nn_id);
+                        let score_file = folder.join(format!("{}", generation)).join(&score_file_name);
+
+                        // Check if score file already exists before running the simulation
+                        if score_file.exists() {
+                            let round_score = read_score_from_file(&score_file, &nn_id)
+                                .with_context(|| format!("Failed to read score from file: {:?}", score_file_name))?;
+                            return Ok::<f32, Error>(round_score);
+                        }
+
+                        // Check if the opposite round score has been determined
+                        let opposite_score_file = folder.join(format!("{}", generation)).join(format!("{}_vs_{}.txt", random_nn_id, nn_id));
+                        if opposite_score_file.exists() {
+                            let round_score = read_score_from_file(&opposite_score_file, &nn_id)
+                                .with_context(|| format!("Failed to read score from file: {:?}", opposite_score_file))?;
+                            return Ok::<f32, Error>(1.0 - round_score);
+                        }
+
+                        let _output = if thread_rng().gen_range(0..100) < 0 {
+                            Command::new(GAME_EXECUTABLE_PATH)
+                                .arg(&config1_arg)
+                                .arg(&config2_arg)
+                                .output()
+                                .await
+                                .expect("Failed to execute game")
+                        } else {
+                            Command::new(GAME_EXECUTABLE_PATH)
+                                .arg(&config1_arg)
+                                .arg(&config2_arg)
+                                .arg(&disable_unreal_rendering_arg)
+                                .output()
+                                .await
+                                .expect("Failed to execute game")
+                        };
+
+                        drop(permit);
+        
+                        // Read the score from the file
                         let round_score = read_score_from_file(&score_file, &nn_id)
                             .with_context(|| format!("Failed to read score from file: {:?}", score_file_name))?;
-                        return Ok::<f32, Error>(round_score);
-                    }
 
-                    // Check if the opposite round score has been determined
-                    let opposite_score_file = folder.join(format!("{}", generation)).join(format!("{}_vs_{}.txt", random_nn_id, nn_id));
-                    if opposite_score_file.exists() {
-                        let round_score = read_score_from_file(&opposite_score_file, &nn_id)
-                            .with_context(|| format!("Failed to read score from file: {:?}", opposite_score_file))?;
-                        return Ok::<f32, Error>(1.0 - round_score);
-                    }
-
-                    if thread_rng().gen_range(0..100) < 4 {
-                        let _output = Command::new(GAME_EXECUTABLE_PATH)
-                            .arg(&config1_arg)
-                            .arg(&config2_arg)
-                            .output()
-                            .await
-                            .expect("Failed to execute game");
-                    } else {
-                        let _output = Command::new(GAME_EXECUTABLE_PATH)
-                            .arg(&config1_arg)
-                            .arg(&config2_arg)
-                            .arg(&disable_unreal_rendering_arg)
-                            .output()
-                            .await
-                            .expect("Failed to execute game");
-                    }
-    
-                    // Read the score from the file
-                    let round_score = read_score_from_file(&score_file, &nn_id)
-                        .with_context(|| format!("Failed to read score from file: {:?}", score_file_name))?;
-
-                    Ok::<f32, Error>(round_score)
+                        Ok::<f32, Error>(round_score)
+                    };
+        
+                    simulations.push(future);
+                }
+        
+                // Wait for all simulation rounds to complete
+                let results: Result<Vec<f32>, Error> = join_all(simulations).await.into_iter().collect();
+        
+                let score = match results {
+                    Ok(scores) => scores.into_iter().sum::<f32>() / SIMULATION_ROUNDS as f32,
+                    Err(e) => return Err(e), // Return the error if results collection failed
                 };
-    
-                simulations.push(future);
+                trace!("NN {:06}_fighter_nn_{} scored {}", self_clone.id, i, score);
+                Ok((i, score))
+            };
+
+            tasks.push(task);
+        }
+
+        let results = join_all(tasks).await;
+
+        for result in results {
+            match result {
+                Ok((index, score)) => {
+                    // Update the original `self` object with the score.
+                    self.scores[self.generation as usize].insert(index as u64, score);
+                },
+                Err(e) => {
+                    // Handle task panic or execution error
+                    return Err(Error::Other(anyhow::anyhow!(format!("Task failed: {:?}", e))));
+                },
             }
-    
-            // Wait for all simulation rounds to complete
-            let results: Result<Vec<f32>, Error> = join_all(simulations).await.into_iter().collect();
-    
-            let score = results?.into_iter().sum::<f32>() / SIMULATION_ROUNDS as f32;
-            trace!("NN {:06}_fighter_nn_{} scored {}", self.id, i, score);
-            self.scores[self.generation as usize].insert(i as u64, score);
         }
     
         Ok(())
@@ -228,9 +262,9 @@ impl GeneticNode for FighterNN {
                 if thread_rng().gen_range(0..100) < 20 {
                     c.weight += thread_rng().gen_range(-0.1..0.1);
                 }
-                // else if thread_rng().gen_range(0..100) < 5 {
-                //     c.weight += thread_rng().gen_range(-0.3..0.3);
-                // }
+                else if thread_rng().gen_range(0..100) < 5 {
+                    c.weight += thread_rng().gen_range(-0.3..0.3);
+                }
             }
             fann.set_connections(&connections);
 

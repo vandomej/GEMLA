@@ -16,7 +16,7 @@ use fighter_nn::FighterNN;
 use clap::Parser;
 use anyhow::Result;
 
-// const NUM_THREADS: usize = 12;
+// const NUM_THREADS: usize = 2;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -47,6 +47,7 @@ fn main() -> Result<()> {
                 GemlaConfig {
                     generations_per_height: 10,
                     overwrite: false,
+                    shared_semaphore_concurrency_limit: 30,
                 },
                 DataFormat::Json,
             ))?;

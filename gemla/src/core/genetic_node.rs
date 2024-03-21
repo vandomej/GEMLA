@@ -6,7 +6,8 @@ use crate::error::Error;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use tokio::sync::Semaphore;
+use std::{fmt::Debug, sync::Arc};
 use uuid::Uuid;
 use async_trait::async_trait;
 
@@ -25,11 +26,12 @@ pub enum GeneticState {
     Finish,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GeneticNodeContext {
     pub generation: u64,
     pub max_generations: u64,
     pub id: Uuid,
+    pub semaphore: Option<Arc<Semaphore>>,
 }
 
 /// A trait used to interact with the internal state of nodes within the [`Bracket`]
@@ -118,11 +120,12 @@ where
         self.state
     }
 
-    pub async fn process_node(&mut self) -> Result<GeneticState, Error> {
+    pub async fn process_node(&mut self, semaphore: Arc<Semaphore>) -> Result<GeneticState, Error> {
         let context = GeneticNodeContext {
             generation: self.generation,
             max_generations: self.max_generations,
             id: self.id,
+            semaphore: Some(semaphore),
         };
 
         match (self.state, &mut self.node) {
@@ -278,13 +281,14 @@ mod tests {
     #[tokio::test]
     async fn test_process_node() -> Result<(), Error> {
         let mut genetic_node = GeneticNodeWrapper::<TestState>::new(2);
+        let semaphore = Arc::new(Semaphore::new(1));
 
         assert_eq!(genetic_node.state(), GeneticState::Initialize);
-        assert_eq!(genetic_node.process_node().await?, GeneticState::Simulate);
-        assert_eq!(genetic_node.process_node().await?, GeneticState::Mutate);
-        assert_eq!(genetic_node.process_node().await?, GeneticState::Simulate);
-        assert_eq!(genetic_node.process_node().await?, GeneticState::Finish);
-        assert_eq!(genetic_node.process_node().await?, GeneticState::Finish);
+        assert_eq!(genetic_node.process_node(semaphore.clone()).await?, GeneticState::Simulate);
+        assert_eq!(genetic_node.process_node(semaphore.clone()).await?, GeneticState::Mutate);
+        assert_eq!(genetic_node.process_node(semaphore.clone()).await?, GeneticState::Simulate);
+        assert_eq!(genetic_node.process_node(semaphore.clone()).await?, GeneticState::Finish);
+        assert_eq!(genetic_node.process_node(semaphore.clone()).await?, GeneticState::Finish);
 
         Ok(())
     }
