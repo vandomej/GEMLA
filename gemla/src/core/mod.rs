@@ -5,10 +5,11 @@ pub mod genetic_node;
 
 use crate::{error::Error, tree::Tree};
 use file_linked::{constants::data_format::DataFormat, FileLinked};
-use futures::{future, future::BoxFuture};
+use futures::future;
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use log::{info, trace, warn};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use tokio::task::JoinHandle;
 use std::{
     collections::HashMap, fmt::Debug, fs::File, io::ErrorKind, marker::Send, mem, path::Path,
     time::Instant,
@@ -65,15 +66,15 @@ pub struct GemlaConfig {
 /// individuals.
 ///
 /// [`GeneticNode`]: genetic_node::GeneticNode
-pub struct Gemla<'a, T>
+pub struct Gemla<T>
 where
     T: Serialize + Clone,
 {
     pub data: FileLinked<(Option<SimulationTree<T>>, GemlaConfig)>,
-    threads: HashMap<Uuid, BoxFuture<'a, Result<GeneticNodeWrapper<T>, Error>>>,
+    threads: HashMap<Uuid, JoinHandle<Result<GeneticNodeWrapper<T>, Error>>>,
 }
 
-impl<'a, T: 'a> Gemla<'a, T>
+impl<T: 'static> Gemla<T>
 where
     T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + Send,
 {
@@ -147,7 +148,9 @@ where
                 trace!("Adding node to process list {}", node.id());
 
                 self.threads
-                    .insert(node.id(), Box::pin(Gemla::process_node(node)));
+                    .insert(node.id(), tokio::spawn(async move {
+                        Gemla::process_node(node).await
+                    }));
             } else {
                 trace!("No node found to process, joining threads");
 
@@ -163,9 +166,10 @@ where
             trace!("Joining threads for nodes {:?}", self.threads.keys());
 
             let results = future::join_all(self.threads.values_mut()).await;
+            
             // Converting a list of results into a result wrapping the list
             let reduced_results: Result<Vec<GeneticNodeWrapper<T>>, Error> =
-                results.into_iter().collect();
+                results.into_iter().flatten().collect();
             self.threads.clear();
 
             // We need to retrieve the processed nodes from the resulting list and replace them in the original list
@@ -323,7 +327,12 @@ where
         let node_state_time = Instant::now();
         let node_state = node.state();
 
-        node.process_node()?;
+        node.process_node().await?;
+
+        if node.state() == GeneticState::Simulate
+        {
+            node.process_node().await?;
+        }
 
         trace!(
             "{:?} completed in {:?} for {}",
@@ -346,6 +355,8 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use std::path::PathBuf;
     use std::fs;
+    use async_trait::async_trait;
+    use tokio::runtime::Runtime;
 
     use self::genetic_node::GeneticNodeContext;
 
@@ -378,17 +389,18 @@ mod tests {
         pub score: f64,
     }
 
+    #[async_trait]
     impl genetic_node::GeneticNode for TestState {
-        fn simulate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
+        async fn simulate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
             self.score += 1.0;
             Ok(())
         }
 
-        fn mutate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
+        fn mutate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
             Ok(())
         }
 
-        fn initialize(_context: &GeneticNodeContext) -> Result<Box<TestState>, Error> {
+        fn initialize(_context: GeneticNodeContext) -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
 
@@ -401,66 +413,84 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_new() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_new() -> Result<(), Error> {
         let path = PathBuf::from("test_new_non_existing");
-        CleanUp::new(&path).run(|p| {
-            assert!(!path.exists());
+        // Use `spawn_blocking` to run synchronous code that needs to call async code internally.
+        tokio::task::spawn_blocking(move || {
+            let rt = Runtime::new().unwrap(); // Create a new Tokio runtime for the async block.
+            CleanUp::new(&path).run(move |p| {
+                rt.block_on(async {
+                    assert!(!path.exists());
 
-            // Testing initial creation
-            let mut config = GemlaConfig {
-                generations_per_height: 1,
-                overwrite: true
-            };
-            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
+                    // Testing initial creation
+                    let mut config = GemlaConfig {
+                        generations_per_height: 1,
+                        overwrite: true,
+                    };
+                    let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
-            smol::block_on(gemla.simulate(2))?;
-            assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
-            
-            drop(gemla);
-            assert!(path.exists());
+                    // Now we can use `.await` within the spawned blocking task.
+                    gemla.simulate(2).await?;
+                    assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
 
-            // Testing overwriting data
-            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
+                    drop(gemla);
+                    assert!(path.exists());
 
-            smol::block_on(gemla.simulate(2))?;
-            assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
+                    // Testing overwriting data
+                    let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
-            drop(gemla);
-            assert!(path.exists());
+                    gemla.simulate(2).await?;
+                    assert_eq!(gemla.data.readonly().0.as_ref().unwrap().height(), 2);
 
-            // Testing not-overwriting data
-            config.overwrite = false;
-            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
+                    drop(gemla);
+                    assert!(path.exists());
 
-            smol::block_on(gemla.simulate(2))?;
-            assert_eq!(gemla.tree_ref().unwrap().height(), 4);
+                    // Testing not-overwriting data
+                    config.overwrite = false;
+                    let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
-            drop(gemla);
-            assert!(path.exists());
+                    gemla.simulate(2).await?;
+                    assert_eq!(gemla.tree_ref().unwrap().height(), 4);
 
-            Ok(())
-        })
+                    drop(gemla);
+                    assert!(path.exists());
+
+                    Ok(())
+                })
+            })
+        }).await.unwrap()?; // Wait for the blocking task to complete, then handle the Result.
+
+        Ok(())
     }
 
-    #[test]
-    fn test_simulate() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_simulate() -> Result<(), Error> {
         let path = PathBuf::from("test_simulate");
-        CleanUp::new(&path).run(|p| {
-            // Testing initial creation
-            let config = GemlaConfig {
-                generations_per_height: 10,
-                overwrite: true
-            };
-            let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
+        // Use `spawn_blocking` to run the synchronous closure that internally awaits async code.
+        tokio::task::spawn_blocking(move || {
+            let rt = Runtime::new().unwrap(); // Create a new Tokio runtime for the async block.
+            CleanUp::new(&path).run(move |p| {
+                rt.block_on(async {
+                    // Testing initial creation
+                    let config = GemlaConfig {
+                        generations_per_height: 10,
+                        overwrite: true,
+                    };
+                    let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
-            smol::block_on(gemla.simulate(5))?;
-            let tree = gemla.tree_ref().unwrap();
-            assert_eq!(tree.height(), 5);
-            assert_eq!(tree.val.as_ref().unwrap().score, 50.0);
+                    // Now we can use `.await` within the spawned blocking task.
+                    gemla.simulate(5).await?;
+                    let tree = gemla.tree_ref().unwrap();
+                    assert_eq!(tree.height(), 5);
+                    assert_eq!(tree.val.as_ref().unwrap().score, 50.0);
 
-            Ok(())
-        })
+                    Ok(())
+                })
+            })
+        }).await.unwrap()?; // Wait for the blocking task to complete, then handle the Result.
+
+        Ok(())
     }
 
 }

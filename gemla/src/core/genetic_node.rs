@@ -8,6 +8,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use uuid::Uuid;
+use async_trait::async_trait;
 
 /// An enum used to control the state of a [`GeneticNode`]
 ///
@@ -24,6 +25,7 @@ pub enum GeneticState {
     Finish,
 }
 
+#[derive(Clone)]
 pub struct GeneticNodeContext {
     pub generation: u64,
     pub max_generations: u64,
@@ -33,20 +35,21 @@ pub struct GeneticNodeContext {
 /// A trait used to interact with the internal state of nodes within the [`Bracket`]
 ///
 /// [`Bracket`]: crate::bracket::Bracket
-pub trait GeneticNode {
+#[async_trait]
+pub trait GeneticNode: Send {
     /// Initializes a new instance of a [`GeneticState`].
     ///
     /// # Examples
     /// TODO
-    fn initialize(context: &GeneticNodeContext) -> Result<Box<Self>, Error>;
+    fn initialize(context: GeneticNodeContext) -> Result<Box<Self>, Error>;
 
-    fn simulate(&mut self, context: &GeneticNodeContext) -> Result<(), Error>;
+    async fn simulate(&mut self, context: GeneticNodeContext) -> Result<(), Error>;
 
     /// Mutates members in a population and/or crossbreeds them to produce new offspring.
     ///
     /// # Examples
     /// TODO
-    fn mutate(&mut self, context: &GeneticNodeContext) -> Result<(), Error>;
+    fn mutate(&mut self, context: GeneticNodeContext) -> Result<(), Error>;
 
     fn merge(left: &Self, right: &Self, id: &Uuid) -> Result<Box<Self>, Error>;
 }
@@ -76,7 +79,7 @@ impl<T> Default for GeneticNodeWrapper<T> {
 
 impl<T> GeneticNodeWrapper<T>
 where
-    T: GeneticNode + Debug,
+    T: GeneticNode + Debug + Send,
 {
     pub fn new(max_generations: u64) -> Self {
         GeneticNodeWrapper::<T> {
@@ -115,7 +118,7 @@ where
         self.state
     }
 
-    pub fn process_node(&mut self) -> Result<GeneticState, Error> {
+    pub async fn process_node(&mut self) -> Result<GeneticState, Error> {
         let context = GeneticNodeContext {
             generation: self.generation,
             max_generations: self.max_generations,
@@ -124,11 +127,11 @@ where
 
         match (self.state, &mut self.node) {
             (GeneticState::Initialize, _) => {
-                self.node = Some(*T::initialize(&context)?);
+                self.node = Some(*T::initialize(context.clone())?);
                 self.state = GeneticState::Simulate;
             }
             (GeneticState::Simulate, Some(n)) => {
-                n.simulate(&context)
+                n.simulate(context.clone()).await
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
 
                 self.state = if self.generation >= self.max_generations {
@@ -138,7 +141,7 @@ where
                 };
             }
             (GeneticState::Mutate, Some(n)) => {
-                n.mutate(&context)
+                n.mutate(context.clone())
                     .with_context(|| format!("Error mutating node: {:?}", self))?;
 
                 self.generation += 1;
@@ -157,23 +160,25 @@ mod tests {
     use super::*;
     use crate::error::Error;
     use anyhow::anyhow;
+    use async_trait::async_trait;
 
     #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
         pub score: f64,
     }
 
+    #[async_trait]
     impl GeneticNode for TestState {
-        fn simulate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
+        async fn simulate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
             self.score += 1.0;
             Ok(())
         }
 
-        fn mutate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
+        fn mutate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
             Ok(())
         }
 
-        fn initialize(_context: &GeneticNodeContext) -> Result<Box<TestState>, Error> {
+        fn initialize(_context: GeneticNodeContext) -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
 
@@ -270,16 +275,16 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_process_node() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_process_node() -> Result<(), Error> {
         let mut genetic_node = GeneticNodeWrapper::<TestState>::new(2);
 
         assert_eq!(genetic_node.state(), GeneticState::Initialize);
-        assert_eq!(genetic_node.process_node()?, GeneticState::Simulate);
-        assert_eq!(genetic_node.process_node()?, GeneticState::Mutate);
-        assert_eq!(genetic_node.process_node()?, GeneticState::Simulate);
-        assert_eq!(genetic_node.process_node()?, GeneticState::Finish);
-        assert_eq!(genetic_node.process_node()?, GeneticState::Finish);
+        assert_eq!(genetic_node.process_node().await?, GeneticState::Simulate);
+        assert_eq!(genetic_node.process_node().await?, GeneticState::Mutate);
+        assert_eq!(genetic_node.process_node().await?, GeneticState::Simulate);
+        assert_eq!(genetic_node.process_node().await?, GeneticState::Finish);
+        assert_eq!(genetic_node.process_node().await?, GeneticState::Finish);
 
         Ok(())
     }

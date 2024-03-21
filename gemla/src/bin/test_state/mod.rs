@@ -2,6 +2,7 @@ use gemla::{core::genetic_node::{GeneticNode, GeneticNodeContext}, error::Error}
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use async_trait::async_trait;
 
 const POPULATION_SIZE: u64 = 5;
 const POPULATION_REDUCTION_SIZE: u64 = 3;
@@ -11,8 +12,9 @@ pub struct TestState {
     pub population: Vec<i64>,
 }
 
+#[async_trait]
 impl GeneticNode for TestState {
-    fn initialize(_context: &GeneticNodeContext) -> Result<Box<Self>, Error> {
+    fn initialize(_context: GeneticNodeContext) -> Result<Box<Self>, Error> {
         let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
@@ -22,7 +24,7 @@ impl GeneticNode for TestState {
         Ok(Box::new(TestState { population }))
     }
 
-    fn simulate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
+    async fn simulate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         self.population = self
@@ -34,7 +36,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn mutate(&mut self, _context: &GeneticNodeContext) -> Result<(), Error> {
+    fn mutate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         let mut v = self.population.clone();
@@ -83,7 +85,7 @@ impl GeneticNode for TestState {
 
         let mut result = TestState { population: v };
 
-        result.mutate(&GeneticNodeContext {
+        result.mutate(GeneticNodeContext {
             id: id.clone(),
             generation: 0,
             max_generations: 0,
@@ -101,7 +103,7 @@ mod tests {
     #[test]
     fn test_initialize() {
         let state = TestState::initialize(
-            &GeneticNodeContext {
+            GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
@@ -111,8 +113,8 @@ mod tests {
         assert_eq!(state.population.len(), POPULATION_SIZE as usize);
     }
 
-    #[test]
-    fn test_simulate() {
+    #[tokio::test]
+    async fn test_simulate() {
         let mut state = TestState {
             population: vec![1, 1, 2, 3],
         };
@@ -120,31 +122,31 @@ mod tests {
         let original_population = state.population.clone();
 
         state.simulate(
-            &GeneticNodeContext {
+            GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
             }
-        ).unwrap();
+        ).await.unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
             .all(|(&a, &b)| b >= a - 1 && b <= a + 2));
 
         state.simulate(
-            &GeneticNodeContext {
+            GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
             }
-        ).unwrap();
+        ).await.unwrap();
         state.simulate(
-            &GeneticNodeContext {
+            GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
             }
-        ).unwrap();
+        ).await.unwrap();
         assert!(original_population
             .iter()
             .zip(state.population.iter())
@@ -158,7 +160,7 @@ mod tests {
         };
 
         state.mutate(
-            &GeneticNodeContext {
+            GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,

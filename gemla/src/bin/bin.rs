@@ -6,16 +6,17 @@ extern crate log;
 mod test_state;
 mod fighter_nn;
 
-use easy_parallel::Parallel;
 use file_linked::constants::data_format::DataFormat;
 use gemla::{
     core::{Gemla, GemlaConfig},
-    error::{log_error, Error},
+    error::log_error,
 };
-use smol::{channel, channel::RecvError, future, Executor};
 use std::{path::PathBuf, time::Instant};
 use fighter_nn::FighterNN;
 use clap::Parser;
+use anyhow::Result;
+
+// const NUM_THREADS: usize = 12;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -29,48 +30,40 @@ struct Args {
 ///
 /// Use the -h, --h, or --help flag to see usage syntax.
 /// TODO
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     env_logger::init();
     info!("Starting");
-
     let now = Instant::now();
 
-    // Obtainning number of threads to use
-    let num_threads = num_cpus::get().max(1);
-    let ex = Executor::new();
-    let (signal, shutdown) = channel::unbounded::<()>();
+    // Manually configure the Tokio runtime
+    let runtime: Result<()> = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_cpus::get()) 
+        // .worker_threads(NUM_THREADS) 
+        .build()?
+        .block_on(async {
+            let args = Args::parse(); // Assuming Args::parse() doesn't need to be async
+            let mut gemla = log_error(Gemla::<FighterNN>::new(
+                &PathBuf::from(args.file),
+                GemlaConfig {
+                    generations_per_height: 10,
+                    overwrite: false,
+                },
+                DataFormat::Json,
+            ))?;
 
-    // Create an executor thread pool.
-    let (_, result): (Vec<Result<(), RecvError>>, Result<(), Error>) = Parallel::new()
-        .each(0..num_threads, |_| {
-            future::block_on(ex.run(shutdown.recv()))
-        })
-        .finish(|| {
-            smol::block_on(async {
-                drop(signal);
+            // let gemla_arc = Arc::new(gemla);
 
-                // Command line arguments are parsed with the clap crate.
-                let args = Args::parse();
+            // Setup your application logic here
+            // If `gemla::simulate` needs to run sequentially, simply call it in sequence without spawning new tasks
 
-                // Checking that the first argument <FILE> is a valid file
-                let mut gemla = log_error(Gemla::<FighterNN>::new(
-                    &PathBuf::from(args.file),
-                    GemlaConfig {
-                        generations_per_height: 3,
-                        overwrite: false,
-                    },
-                    DataFormat::Json,
-                ))?;
-
-                loop {
-                    log_error(gemla.simulate(5).await)?;
-                }
-            })
+            // Example placeholder loop to continuously run simulate
+            loop { // Arbitrary loop count for demonstration
+                gemla.simulate(5).await?;
+            }
         });
 
-    result?;
+    runtime?; // Handle errors from the block_on call
 
     info!("Finished in {:?}", now.elapsed());
-
     Ok(())
 }
