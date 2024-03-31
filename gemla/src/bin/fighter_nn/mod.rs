@@ -15,7 +15,18 @@ use async_trait::async_trait;
 
 const BASE_DIR: &str = "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Simulations";
 const POPULATION: usize = 50;
-const NEURAL_NETWORK_SHAPE: &[u32; 5] = &[14, 20, 20, 12, 8];
+
+const NEURAL_NETWORK_INPUTS: usize = 14;
+const NEURAL_NETWORK_OUTPUTS: usize = 8;
+const NEURAL_NETWORK_HIDDEN_LAYERS_MIN: usize = 1;
+const NEURAL_NETWORK_HIDDEN_LAYERS_MAX: usize = 10;
+const NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN: usize = 3;
+const NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX: usize = 35;
+const NEURAL_NETWORK_INITIAL_WEIGHT_MIN: f32 = -2.0;
+const NEURAL_NETWORK_INITIAL_WEIGHT_MAX: f32 = 2.0;
+const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MIN: usize = 1;
+const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX: usize = 20;
+
 const SIMULATION_ROUNDS: usize = 5;
 const SURVIVAL_RATE: f32 = 0.5;
 const GAME_EXECUTABLE_PATH: &str = "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Package\\Windows\\AI_Fight_Sim.exe";
@@ -38,6 +49,9 @@ pub struct FighterNN {
     pub generation: u64,
     // A map of each nn identifier in a generation and their physics score
     pub scores: Vec<HashMap<u64, f32>>,
+    // A map of the id of the nn in the current generation and their neural network shape
+    pub nn_shapes: HashMap<u64, Vec<u32>>,
+    pub crossbreed_segments: usize
 }
 
 #[async_trait]
@@ -55,14 +69,26 @@ impl GeneticNode for FighterNN {
         let gen_folder = folder.join("0");
         fs::create_dir_all(&gen_folder)
             .with_context(|| format!("Failed to create or access the generation folder: {:?}", gen_folder))?;
+
+        let nn_shapes = HashMap::new();
     
         // Create the first generation in this folder
         for i in 0..POPULATION {
             // Filenames are stored in the format of "xxxxxx_fighter_nn_0.net", "xxxxxx_fighter_nn_1.net", etc. Where xxxxxx is the folder name
             let nn = gen_folder.join(format!("{:06}_fighter_nn_{}.net", context.id, i));
-            let mut fann = Fann::new(NEURAL_NETWORK_SHAPE)
+
+            // Randomly generate a neural network shape based on constants
+            let hidden_layers = thread_rng().gen_range(NEURAL_NETWORK_HIDDEN_LAYERS_MIN..NEURAL_NETWORK_HIDDEN_LAYERS_MAX);
+            let mut nn_shape = vec![NEURAL_NETWORK_INPUTS as u32];
+            for _ in 0..hidden_layers {
+                nn_shape.push(thread_rng().gen_range(NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN..NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX) as u32);
+            }
+            nn_shape.push(NEURAL_NETWORK_OUTPUTS as u32);
+            nn_shapes.insert(i as u64, nn_shape.clone());
+
+            let mut fann = Fann::new(nn_shape.as_slice())
                 .with_context(|| "Failed to create nn")?;
-            fann.randomize_weights(-0.8, 0.8);
+            fann.randomize_weights(thread_rng().gen_range(NEURAL_NETWORK_INITIAL_WEIGHT_MIN..0.0), thread_rng().gen_range(0.0..=NEURAL_NETWORK_INITIAL_WEIGHT_MAX));
             fann.set_activation_func_hidden(ActivationFunc::SigmoidSymmetric);
             fann.set_activation_func_output(ActivationFunc::SigmoidSymmetric);
             // This will overwrite any existing file with the same name
@@ -76,6 +102,8 @@ impl GeneticNode for FighterNN {
             population_size: POPULATION,
             generation: 0,
             scores: vec![HashMap::new()],
+            nn_shapes,
+            crossbreed_segments: thread_rng().gen_range(NEURAL_NETWORK_CROSSBREED_SEGMENTS_MIN..NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX)
         }))
     }
 
@@ -120,43 +148,59 @@ impl GeneticNode for FighterNN {
 
                         // Check if score file already exists before running the simulation
                         if score_file.exists() {
-                            let round_score = read_score_from_file(&score_file, &nn_id)
+                            let round_score = read_score_from_file(&score_file, &nn_id).await
                                 .with_context(|| format!("Failed to read score from file: {:?}", score_file_name))?;
+
+                            trace!("{} scored {}", nn_id, round_score);
+
                             return Ok::<f32, Error>(round_score);
                         }
 
                         // Check if the opposite round score has been determined
                         let opposite_score_file = folder.join(format!("{}", generation)).join(format!("{}_vs_{}.txt", random_nn_id, nn_id));
                         if opposite_score_file.exists() {
-                            let round_score = read_score_from_file(&opposite_score_file, &nn_id)
+                            let round_score = read_score_from_file(&opposite_score_file, &nn_id).await
                                 .with_context(|| format!("Failed to read score from file: {:?}", opposite_score_file))?;
+
+                            trace!("{} scored {}", nn_id, round_score);
+
                             return Ok::<f32, Error>(1.0 - round_score);
                         }
 
-                        let _output = if thread_rng().gen_range(0..100) < 0 {
-                            Command::new(GAME_EXECUTABLE_PATH)
-                                .arg(&config1_arg)
-                                .arg(&config2_arg)
-                                .output()
-                                .await
-                                .expect("Failed to execute game")
-                        } else {
-                            Command::new(GAME_EXECUTABLE_PATH)
-                                .arg(&config1_arg)
-                                .arg(&config2_arg)
-                                .arg(&disable_unreal_rendering_arg)
-                                .output()
-                                .await
-                                .expect("Failed to execute game")
-                        };
+                        // Run simulation until score file is generated
+                        while !score_file.exists() {
+                            let _output = if thread_rng().gen_range(0..100) < 1 {
+                                Command::new(GAME_EXECUTABLE_PATH)
+                                    .arg(&config1_arg)
+                                    .arg(&config2_arg)
+                                    .output()
+                                    .await
+                                    .expect("Failed to execute game")
+                            } else {
+                                Command::new(GAME_EXECUTABLE_PATH)
+                                    .arg(&config1_arg)
+                                    .arg(&config2_arg)
+                                    .arg(&disable_unreal_rendering_arg)
+                                    .output()
+                                    .await
+                                    .expect("Failed to execute game")
+                            };
+                        }
 
                         drop(permit);
-        
-                        // Read the score from the file
-                        let round_score = read_score_from_file(&score_file, &nn_id)
-                            .with_context(|| format!("Failed to read score from file: {:?}", score_file_name))?;
 
-                        Ok::<f32, Error>(round_score)
+                        // Read the score from the file
+                        if score_file.exists() {
+                            let round_score = read_score_from_file(&score_file, &nn_id).await
+                                .with_context(|| format!("Failed to read score from file: {:?}", score_file_name))?;
+
+                            trace!("{} scored {}", nn_id, round_score);
+
+                            Ok(round_score)
+                        } else {
+                            trace!("Score file not found: {:?}", score_file_name);
+                            Ok(0.0)
+                        }
                     };
         
                     simulations.push(future);
@@ -219,8 +263,10 @@ impl GeneticNode for FighterNN {
         for i in 0..survivor_count {
             let nn_id = to_keep[i];
             let nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, nn_id));
-            let mut fann = Fann::from_file(&nn)
+            let fann = Fann::from_file(&nn)
                 .with_context(|| format!("Failed to load nn"))?;
+
+            let new_fann = fann.try_clone();
 
             // Load another nn from the current generation and cross breed it with the current nn
             let cross_nn = self.folder.join(format!("{}", self.generation)).join(format!("{:06}_fighter_nn_{}.net", self.id, to_keep[thread_rng().gen_range(0..survivor_count)]));
@@ -239,6 +285,7 @@ impl GeneticNode for FighterNN {
                 start_points.push(start_point);
             }
             start_points.sort_unstable(); // Ensure segments are in order
+            trace!("Crossbreeding Start points: {:?}", start_points);
             
             for (j, &start) in start_points.iter().enumerate() {
                 let end = if j < segment_count - 1 {
@@ -317,22 +364,39 @@ impl GeneticNode for FighterNN {
     }
 }
 
-fn read_score_from_file(file_path: &Path, nn_id: &str) -> Result<f32, io::Error> {
-    let file = File::open(file_path)?;
-    let reader = BufReader::new(file);
+async fn read_score_from_file(file_path: &Path, nn_id: &str) -> Result<f32, io::Error> {
+    let mut attempts = 0;
 
-    for line in reader.lines() {
-        let line = line?;
-        if line.starts_with(nn_id) {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() == 2 {
-                return parts[1].trim().parse::<f32>().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
-            }
+    loop {
+        match File::open(file_path) {
+            Ok(file) => {
+                let reader = BufReader::new(file);
+
+                for line in reader.lines() {
+                    let line = line?;
+                    if line.starts_with(nn_id) {
+                        let parts: Vec<&str> = line.split(':').collect();
+                        if parts.len() == 2 {
+                            return parts[1].trim().parse::<f32>().map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
+                        }
+                    }
+                }
+
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "NN ID not found in scores file",
+                ));
+            },
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::Other => {
+                if attempts >= 5 { // Attempt 5 times before giving up.
+                    return Err(e);
+                }
+
+                attempts += 1;
+                // wait 1 second to ensure the file is written
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            },
+            Err(e) => return Err(e),
         }
     }
-
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        "NN ID not found in scores file",
-    ))
 }

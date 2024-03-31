@@ -45,9 +45,9 @@ fn main() -> Result<()> {
             let mut gemla = log_error(Gemla::<FighterNN>::new(
                 &PathBuf::from(args.file),
                 GemlaConfig {
-                    generations_per_height: 10,
+                    generations_per_height: 5,
                     overwrite: false,
-                    shared_semaphore_concurrency_limit: 30,
+                    shared_semaphore_concurrency_limit: 50,
                 },
                 DataFormat::Json,
             ))?;
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
 
             // Example placeholder loop to continuously run simulate
             loop { // Arbitrary loop count for demonstration
-                gemla.simulate(5).await?;
+                gemla.simulate(1).await?;
             }
         });
 
