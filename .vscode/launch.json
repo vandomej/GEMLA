@@ -10,7 +10,23 @@
             "name": "Debug",
             "program": "${workspaceFolder}/gemla/target/debug/gemla.exe",
             "args": ["./gemla/temp/"],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}/gemla"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Rust Tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--manifest-path", "${workspaceFolder}/gemla/Cargo.toml",
+                    "--no-run", // Compiles the tests without running them
+                    "--package=gemla", // Specify your package name if necessary
+                    "--bin=bin"
+                ],
+                "filter": { }
+            },
+            "args": [],
         }
     ]
 }
