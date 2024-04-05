@@ -6,7 +6,7 @@ pub mod genetic_node;
 use crate::{error::Error, tree::Tree};
 use async_recursion::async_recursion;
 use file_linked::{constants::data_format::DataFormat, FileLinked};
-use futures::{executor::block_on, future};
+use futures::{executor::{block_on, LocalPool}, future, task::{LocalFutureObj, LocalSpawn, LocalSpawnExt}, FutureExt};
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use log::{info, trace, warn};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -334,12 +334,7 @@ where
 
         node.process_node(gemla_context.clone()).await?;
 
-        if node.state() == GeneticState::Simulate
-        {
-            node.process_node(gemla_context.clone()).await?;
-        }
-
-        trace!(
+        info!(
             "{:?} completed in {:?} for {}",
             node_state,
             node_state_time.elapsed(),

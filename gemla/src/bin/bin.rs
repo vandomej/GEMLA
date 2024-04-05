@@ -32,6 +32,8 @@ struct Args {
 /// TODO
 fn main() -> Result<()> {
     env_logger::init();
+    // console_subscriber::init();
+
     info!("Starting");
     let now = Instant::now();
 

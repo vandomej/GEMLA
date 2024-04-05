@@ -26,10 +26,11 @@ rand = "0.8.5"
 log = "0.4.21"
 env_logger = "0.11.3"
 futures = "0.3.30"
-tokio = { version = "1.36.0", features = ["full"] }
+tokio = { version = "1.37.0", features = ["full"] }
 num_cpus = "1.16.0"
 easy-parallel = "3.3.1"
 fann = "0.1.8"
 async-trait = "0.1.78"
 async-recursion = "1.1.0"
 lerp = "0.5.0"
+console-subscriber = "0.2.0"

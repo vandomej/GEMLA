@@ -3,15 +3,15 @@ extern crate fann;
 pub mod neural_network_utility;
 pub mod fighter_context;
 
-use std::{cmp::max, fs::{self, File}, io::{self, BufRead, BufReader}, ops::Range, path::{Path, PathBuf}};
+use std::{cmp::max, collections::{HashSet, VecDeque}, fs::{self, File}, io::{self, BufRead, BufReader}, ops::Range, panic::{catch_unwind, AssertUnwindSafe}, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::Duration};
 use fann::{ActivationFunc, Fann};
-use futures::future::join_all;
+use futures::{executor::block_on, future::{join, join_all, select_all}, stream::FuturesUnordered, FutureExt, StreamExt};
 use gemla::{core::genetic_node::{GeneticNode, GeneticNodeContext}, error::Error};
 use lerp::Lerp;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use anyhow::Context;
-use tokio::process::Command;
+use tokio::{process::Command, sync::{mpsc, Semaphore}, task, time::{sleep, timeout, Sleep}};
 use uuid::Uuid;
 use std::collections::HashMap;
 use async_trait::async_trait;
@@ -21,7 +21,7 @@ use self::neural_network_utility::{crossbreed, major_mutation};
 const BASE_DIR: &str = "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Simulations";
 const POPULATION: usize = 50;
 
-const NEURAL_NETWORK_INPUTS: usize = 14;
+const NEURAL_NETWORK_INPUTS: usize = 18;
 const NEURAL_NETWORK_OUTPUTS: usize = 8;
 const NEURAL_NETWORK_HIDDEN_LAYERS_MIN: usize = 1;
 const NEURAL_NETWORK_HIDDEN_LAYERS_MAX: usize = 10;
@@ -239,9 +239,9 @@ impl GeneticNode for FighterNN {
             let mut connections = new_fann.get_connections(); // Vector of connections
             for c in &mut connections {
                 if thread_rng().gen_range(0.0..1.0) < self.minor_mutation_rate {
-                    debug!("Minor mutation on connection {:?}", c);
+                    trace!("Minor mutation on connection {:?}", c);
                     c.weight += thread_rng().gen_range(self.weight_initialization_range.clone());
-                    debug!("New weight: {}", c.weight);
+                    trace!("New weight: {}", c.weight);
                 }
             }
 
@@ -413,7 +413,7 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
         let opposing_score = read_score_from_file(&score_file, &nn_2_id).await
             .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        trace!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
+        debug!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
 
 
         return Ok((round_score, opposing_score));
@@ -428,7 +428,7 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
         let opposing_score = read_score_from_file(&opposite_score_file, &nn_2_id).await
             .with_context(|| format!("Failed to read score from file: {:?}", opposite_score_file))?;
 
-        trace!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
+        debug!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
 
         return Ok((round_score, opposing_score));
     }
@@ -438,24 +438,28 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
     let config2_arg = format!("-NN2Config=\"{}\"", nn_path_2.to_str().unwrap());
     let disable_unreal_rendering_arg = "-nullrhi".to_string();
 
-    while !score_file.exists() {
-        let _output = if thread_rng().gen_range(0..100) < 1 {
-            Command::new(GAME_EXECUTABLE_PATH)
-                .arg(&config1_arg)
-                .arg(&config2_arg)
-                .output()
-                .await
-                .expect("Failed to execute game")
-        } else {
-            Command::new(GAME_EXECUTABLE_PATH)
-                .arg(&config1_arg)
-                .arg(&config2_arg)
-                .arg(&disable_unreal_rendering_arg)
-                .output()
-                .await
-                .expect("Failed to execute game")
-        };
-    }
+    // debug!("the following command {} {} {} {}", GAME_EXECUTABLE_PATH, config1_arg, config2_arg, disable_unreal_rendering_arg);
+
+    trace!("Running simulation for {} vs {}", nn_1_id, nn_2_id);
+
+    let _output = if thread_rng().gen_range(0..100) < 1 {
+        Command::new(GAME_EXECUTABLE_PATH)
+            .arg(&config1_arg)
+            .arg(&config2_arg)
+            .output()
+            .await
+            .expect("Failed to execute game")
+    } else {
+        Command::new(GAME_EXECUTABLE_PATH)
+            .arg(&config1_arg)
+            .arg(&config2_arg)
+            .arg(&disable_unreal_rendering_arg)
+            .output()
+            .await
+            .expect("Failed to execute game")
+    };
+
+    trace!("Simulation completed for {} vs {}: {}", nn_1_id, nn_2_id, score_file.exists());
 
     // Read the score from the file
     if score_file.exists() {
@@ -465,7 +469,7 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
         let opposing_score = read_score_from_file(&score_file, &nn_2_id).await
             .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        trace!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
+        debug!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
 
 
         return Ok((round_score, opposing_score))

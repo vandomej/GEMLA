@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tokio::sync::Semaphore;
 
-const SHARED_SEMAPHORE_CONCURRENCY_LIMIT: usize = 20;
+const SHARED_SEMAPHORE_CONCURRENCY_LIMIT: usize = 50;
 
 
 #[derive(Debug, Clone)]

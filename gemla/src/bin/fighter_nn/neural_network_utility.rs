@@ -171,17 +171,17 @@ pub fn consolidate_old_connections(primary: &Fann, secondary: &Fann, new_shape: 
                     if *is_primary {
                         let original_from_neuron = to_non_bias_network_id(connection.from_neuron, &primary_shape);
                         let original_to_neuron = to_non_bias_network_id(connection.to_neuron, &primary_shape);
-                        debug!("Primary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", previous_new_id, new_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, previous_neuron_id, neuron_id);
+                        trace!("Primary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", previous_new_id, new_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, previous_neuron_id, neuron_id);
                     } else {
                         let original_from_neuron = to_non_bias_network_id(connection.from_neuron, &secondary_shape);
                         let original_to_neuron = to_non_bias_network_id(connection.to_neuron, &secondary_shape);
-                        debug!("Secondary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", previous_new_id, new_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, previous_neuron_id, neuron_id);
+                        trace!("Secondary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", previous_new_id, new_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, previous_neuron_id, neuron_id);
                     }
                     let translated_from = to_bias_network_id(previous_new_id, &new_shape);
                     let translated_to = to_bias_network_id(new_id, &new_shape);
                     new_fann.set_weight(translated_from, translated_to, connection.weight);
                 } else {
-                    debug!("Connection not found for ({}, {}) -> ({}, {})",  previous_new_id, new_id, previous_neuron_id, neuron_id);
+                    trace!("Connection not found for ({}, {}) -> ({}, {})",  previous_new_id, new_id, previous_neuron_id, neuron_id);
                 }
             }
         }
@@ -193,11 +193,13 @@ pub fn consolidate_old_connections(primary: &Fann, secondary: &Fann, new_shape: 
             for (neuron_id, is_primary, _, new_id) in current_layer_connections.iter() {
                 let translated_neuron_id = to_bias_network_id(new_id, &new_shape);
 
-                let mut connection;
+                let mut connection = None;
                 let mut found_in_primary = false;
                 if *is_primary {
-                    let primary_bias_neuron = get_bias_neuron_for_layer(layer, &primary_shape).unwrap();
-                    connection = primary_connections.iter()
+                    let primary_bias_neuron = get_bias_neuron_for_layer(layer, &primary_shape);
+                    if let Some(primary_bias_neuron) = primary_bias_neuron
+                    {
+                        connection = primary_connections.iter()
                         .find(|connection| {
                             let to_neuron = to_non_bias_network_id(connection.to_neuron, &primary_shape);
 
@@ -207,9 +209,29 @@ pub fn consolidate_old_connections(primary: &Fann, secondary: &Fann, new_shape: 
                                 false
                             }
                         });
+                    }
+                    
 
                     if let None = connection {
-                        let secondary_bias_neuron = get_bias_neuron_for_layer(layer, &secondary_shape).unwrap();
+                        let secondary_bias_neuron = get_bias_neuron_for_layer(layer, &secondary_shape);
+                        if let Some(secondary_bias_neuron) = secondary_bias_neuron {
+                            connection = secondary_connections.iter()
+                                .find(|connection| {
+                                    let to_neuron = to_non_bias_network_id(connection.to_neuron, &secondary_shape);
+
+                                    if let Some(to_neuron) = to_neuron {
+                                        connection.from_neuron == secondary_bias_neuron && to_neuron == *neuron_id
+                                    } else {
+                                        false
+                                    }
+                                });
+                        }
+                    } else {
+                        found_in_primary = true;
+                    }
+                } else {
+                    let secondary_bias_neuron = get_bias_neuron_for_layer(layer, &secondary_shape);
+                    if let Some(secondary_bias_neuron) = secondary_bias_neuron {
                         connection = secondary_connections.iter()
                             .find(|connection| {
                                 let to_neuron = to_non_bias_network_id(connection.to_neuron, &secondary_shape);
@@ -220,34 +242,22 @@ pub fn consolidate_old_connections(primary: &Fann, secondary: &Fann, new_shape: 
                                     false
                                 }
                             });
-                    } else {
-                        found_in_primary = true;
                     }
-                } else {
-                    let secondary_bias_neuron = get_bias_neuron_for_layer(layer, &secondary_shape).unwrap();
-                    connection = secondary_connections.iter()
-                        .find(|connection| {
-                            let to_neuron = to_non_bias_network_id(connection.to_neuron, &secondary_shape);
-
-                            if let Some(to_neuron) = to_neuron {
-                                connection.from_neuron == secondary_bias_neuron && to_neuron == *neuron_id
-                            } else {
-                                false
-                            }
-                        });
 
                     if let None = connection {
-                        let primary_bias_neuron = get_bias_neuron_for_layer(layer, &primary_shape).unwrap();
-                        connection = primary_connections.iter()
-                            .find(|connection| {
-                                let to_neuron = to_non_bias_network_id(connection.to_neuron, &primary_shape);
+                        let primary_bias_neuron = get_bias_neuron_for_layer(layer, &primary_shape);
+                        if let Some(primary_bias_neuron) = primary_bias_neuron {
+                            connection = primary_connections.iter()
+                                .find(|connection| {
+                                    let to_neuron = to_non_bias_network_id(connection.to_neuron, &primary_shape);
 
-                                if let Some(to_neuron) = to_neuron {
-                                    connection.from_neuron == primary_bias_neuron && to_neuron == *neuron_id
-                                } else {
-                                    false
-                                }
-                            });
+                                    if let Some(to_neuron) = to_neuron {
+                                        connection.from_neuron == primary_bias_neuron && to_neuron == *neuron_id
+                                    } else {
+                                        false
+                                    }
+                                });
+                        }
                     } else {
                         found_in_primary = true;
                     }
@@ -257,15 +267,15 @@ pub fn consolidate_old_connections(primary: &Fann, secondary: &Fann, new_shape: 
                     if *is_primary {
                         let original_from_neuron = to_non_bias_network_id(connection.from_neuron, &primary_shape);
                         let original_to_neuron = to_non_bias_network_id(connection.to_neuron, &primary_shape);
-                        debug!("Primary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", bias_neuron, translated_neuron_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, bias_neuron, neuron_id);
+                        trace!("Primary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", bias_neuron, translated_neuron_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, bias_neuron, neuron_id);
                     } else {
                         let original_from_neuron = to_non_bias_network_id(connection.from_neuron, &secondary_shape);
                         let original_to_neuron = to_non_bias_network_id(connection.to_neuron, &secondary_shape);
-                        debug!("Secondary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", bias_neuron, translated_neuron_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, bias_neuron, neuron_id);
+                        trace!("Secondary: Adding connection from ({} -> {}) translated to ({:?} -> {:?}) with weight {} for primary:{} [{} -> {}] [{} -> {}]", bias_neuron, translated_neuron_id, original_from_neuron, original_to_neuron, connection.weight, found_in_primary, connection.from_neuron, connection.to_neuron, bias_neuron, neuron_id);
                     }
                     new_fann.set_weight(bias_neuron, translated_neuron_id, connection.weight);
                 } else {
-                    debug!("Connection not found for bias ({}, {}) -> ({}, {}) primary: {}",  bias_neuron, neuron_id, bias_neuron, translated_neuron_id, is_primary);
+                    trace!("Connection not found for bias ({}, {}) -> ({}, {}) primary: {}",  bias_neuron, neuron_id, bias_neuron, translated_neuron_id, is_primary);
                 }
             }
         }
