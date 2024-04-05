@@ -4,15 +4,15 @@
 pub mod genetic_node;
 
 use crate::{error::Error, tree::Tree};
+use async_recursion::async_recursion;
 use file_linked::{constants::data_format::DataFormat, FileLinked};
-use futures::future;
+use futures::{executor::block_on, future};
 use genetic_node::{GeneticNode, GeneticNodeWrapper, GeneticState};
 use log::{info, trace, warn};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tokio::sync::Semaphore;
 use std::{
-    collections::HashMap, fmt::Debug, fs::File, io::ErrorKind, marker::Send, mem, path::Path, sync::Arc, time::Instant
+    collections::HashMap, fmt::Debug, fs::File, io::ErrorKind, marker::Send, mem, path::Path, time::Instant
 };
 use uuid::Uuid;
 
@@ -58,7 +58,6 @@ type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 pub struct GemlaConfig {
     pub generations_per_height: u64,
     pub overwrite: bool,
-    pub shared_semaphore_concurrency_limit: usize,
 }
 
 /// Creates a tournament style bracket for simulating and evaluating nodes of type `T` implementing [`GeneticNode`].
@@ -69,16 +68,17 @@ pub struct GemlaConfig {
 /// [`GeneticNode`]: genetic_node::GeneticNode
 pub struct Gemla<T>
 where
-    T: Serialize + Clone,
+    T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + Send,
+    T::Context: Send + Sync + Clone + Debug + Serialize + DeserializeOwned + 'static + Default,
 {
-    pub data: FileLinked<(Option<SimulationTree<T>>, GemlaConfig)>,
+    pub data: FileLinked<(Option<SimulationTree<T>>, GemlaConfig, T::Context)>,
     threads: HashMap<Uuid, JoinHandle<Result<GeneticNodeWrapper<T>, Error>>>,
-    semaphore: Arc<Semaphore>,
 }
 
 impl<T: 'static> Gemla<T>
 where
     T: GeneticNode + Serialize + DeserializeOwned + Debug + Clone + Send,
+    T::Context: Send + Sync + Clone + Debug + Serialize + DeserializeOwned + 'static + Default,
 {
     pub fn new(path: &Path, config: GemlaConfig, data_format: DataFormat) -> Result<Self, Error> {
         match File::open(path) {
@@ -86,18 +86,16 @@ where
             // based on the configuration provided
             Ok(_) => Ok(Gemla {
                 data: if config.overwrite {
-                    FileLinked::new((None, config), path, data_format)?
+                    FileLinked::new((None, config, T::Context::default()), path, data_format)?
                 } else {
                     FileLinked::from_file(path, data_format)?
                 },
                 threads: HashMap::new(),
-                semaphore: Arc::new(Semaphore::new(config.shared_semaphore_concurrency_limit)),
             }),
             // If the file doesn't exist we must create it
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Gemla {
-                data: FileLinked::new((None, config), path, data_format)?,
+                data: FileLinked::new((None, config, T::Context::default()), path, data_format)?,
                 threads: HashMap::new(),
-                semaphore: Arc::new(Semaphore::new(config.shared_semaphore_concurrency_limit)),
             }),
             Err(error) => Err(Error::IO(error)),
         }
@@ -117,7 +115,7 @@ where
         {
             // Before we can process nodes we must create blank nodes in their place to keep track of which nodes have been processed
             // in the tree and which nodes have not.
-            self.data.mutate(|(d, c)| {
+            self.data.mutate(|(d, c, _)| {
                 let mut tree: Option<SimulationTree<T>> = Gemla::increase_height(d.take(), c, steps);
                 mem::swap(d, &mut tree);
             })?;
@@ -151,11 +149,11 @@ where
             {
                 trace!("Adding node to process list {}", node.id());
 
-                let semaphore = self.semaphore.clone();
+                let gemla_context = self.data.readonly().2.clone();
 
                 self.threads
                     .insert(node.id(), tokio::spawn(async move {
-                        Gemla::process_node(node, semaphore).await
+                        Gemla::process_node(node, gemla_context).await
                     }));
             } else {
                 trace!("No node found to process, joining threads");
@@ -180,7 +178,7 @@ where
 
             // We need to retrieve the processed nodes from the resulting list and replace them in the original list
             reduced_results.and_then(|r| {
-                self.data.mutate(|(d, _)| {
+                self.data.mutate(|(d, _, context)| {
                     if let Some(t) = d {
                         let failed_nodes = Gemla::replace_nodes(t, r);
                         // We receive a list of nodes that were unable to be found in the original tree
@@ -192,7 +190,7 @@ where
                         }
 
                         // Once the nodes are replaced we need to find nodes that can be merged from the completed children nodes
-                        Gemla::merge_completed_nodes(t)
+                        block_on(Gemla::merge_completed_nodes(t, context.clone()))
                     } else {
                         warn!("Unable to replce nodes {:?} in empty tree", r);
                         Ok(())
@@ -204,7 +202,8 @@ where
         Ok(())
     }
 
-    fn merge_completed_nodes(tree: &mut SimulationTree<T>) -> Result<(), Error> {
+    #[async_recursion]
+    async fn merge_completed_nodes(tree: &mut SimulationTree<T>, gemla_context: T::Context) -> Result<(), Error> {
         if tree.val.state() == GeneticState::Initialize {
             match (&mut tree.left, &mut tree.right) {
                 // If the current node has been initialized, and has children nodes that are completed, then we need
@@ -215,7 +214,7 @@ where
                 {
                     info!("Merging nodes {} and {}", l.val.id(), r.val.id());
                     if let (Some(left_node), Some(right_node)) = (l.val.as_ref(), r.val.as_ref()) {
-                        let merged_node = GeneticNode::merge(left_node, right_node, &tree.val.id())?;
+                        let merged_node = GeneticNode::merge(left_node, right_node, &tree.val.id(), gemla_context.clone()).await?;
                         tree.val = GeneticNodeWrapper::from(
                             *merged_node,
                             tree.val.max_generations(),
@@ -224,8 +223,8 @@ where
                     }
                 }
                 (Some(l), Some(r)) => {
-                    Gemla::merge_completed_nodes(l)?;
-                    Gemla::merge_completed_nodes(r)?;
+                    Gemla::merge_completed_nodes(l, gemla_context.clone()).await?;
+                    Gemla::merge_completed_nodes(r, gemla_context.clone()).await?;
                 }
                 // If there is only one child node that's completed then we want to copy it to the parent node
                 (Some(l), None) if l.val.state() == GeneticState::Finish => {
@@ -239,7 +238,7 @@ where
                         );
                     }
                 }
-                (Some(l), None) => Gemla::merge_completed_nodes(l)?,
+                (Some(l), None) => Gemla::merge_completed_nodes(l, gemla_context.clone()).await?,
                 (None, Some(r)) if r.val.state() == GeneticState::Finish => {
                     trace!("Copying node {}", r.val.id());
 
@@ -251,7 +250,7 @@ where
                         );
                     }
                 }
-                (None, Some(r)) => Gemla::merge_completed_nodes(r)?,
+                (None, Some(r)) => Gemla::merge_completed_nodes(r, gemla_context.clone()).await?,
                 (_, _) => (),
             }
         }
@@ -329,15 +328,15 @@ where
         tree.val.state() == GeneticState::Finish 
     }
 
-    async fn process_node(mut node: GeneticNodeWrapper<T>, semaphore: Arc<Semaphore>) -> Result<GeneticNodeWrapper<T>, Error> {
+    async fn process_node(mut node: GeneticNodeWrapper<T>, gemla_context: T::Context) -> Result<GeneticNodeWrapper<T>, Error> {
         let node_state_time = Instant::now();
         let node_state = node.state();
 
-        node.process_node(semaphore.clone()).await?;
+        node.process_node(gemla_context.clone()).await?;
 
         if node.state() == GeneticState::Simulate
         {
-            node.process_node(semaphore.clone()).await?;
+            node.process_node(gemla_context.clone()).await?;
         }
 
         trace!(
@@ -397,20 +396,22 @@ mod tests {
 
     #[async_trait]
     impl genetic_node::GeneticNode for TestState {
-        async fn simulate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
+        type Context = ();
+
+        async fn simulate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
             self.score += 1.0;
             Ok(())
         }
 
-        fn mutate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
+        async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
             Ok(())
         }
 
-        fn initialize(_context: GeneticNodeContext) -> Result<Box<TestState>, Error> {
+        async fn initialize(_context: GeneticNodeContext<Self::Context>) -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
 
-        fn merge(left: &TestState, right: &TestState, _id: &Uuid) -> Result<Box<TestState>, Error> {
+        async fn merge(left: &TestState, right: &TestState, _id: &Uuid, _: Self::Context) -> Result<Box<TestState>, Error> {
             Ok(Box::new(if left.score > right.score {
                 left.clone()
             } else {
@@ -433,7 +434,6 @@ mod tests {
                     let mut config = GemlaConfig {
                         generations_per_height: 1,
                         overwrite: true,
-                        shared_semaphore_concurrency_limit: 1,
                     };
                     let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 
@@ -483,7 +483,6 @@ mod tests {
                     let config = GemlaConfig {
                         generations_per_height: 10,
                         overwrite: true,
-                        shared_semaphore_concurrency_limit: 1,
                     };
                     let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json)?;
 

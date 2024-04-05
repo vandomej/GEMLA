@@ -14,7 +14,9 @@ pub struct TestState {
 
 #[async_trait]
 impl GeneticNode for TestState {
-    fn initialize(_context: GeneticNodeContext) -> Result<Box<Self>, Error> {
+    type Context = ();
+
+    async fn initialize(_context: GeneticNodeContext<Self::Context>) -> Result<Box<Self>, Error> {
         let mut population: Vec<i64> = vec![];
 
         for _ in 0..POPULATION_SIZE {
@@ -24,7 +26,7 @@ impl GeneticNode for TestState {
         Ok(Box::new(TestState { population }))
     }
 
-    async fn simulate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
+    async fn simulate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         self.population = self
@@ -36,7 +38,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn mutate(&mut self, _context: GeneticNodeContext) -> Result<(), Error> {
+    async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
         let mut rng = thread_rng();
 
         let mut v = self.population.clone();
@@ -74,7 +76,7 @@ impl GeneticNode for TestState {
         Ok(())
     }
 
-    fn merge(left: &TestState, right: &TestState, id: &Uuid) -> Result<Box<TestState>, Error> {
+    async fn merge(left: &TestState, right: &TestState, id: &Uuid, gemla_context: Self::Context) -> Result<Box<TestState>, Error> {
         let mut v = left.population.clone();
         v.append(&mut right.population.clone());
 
@@ -89,8 +91,8 @@ impl GeneticNode for TestState {
             id: id.clone(),
             generation: 0,
             max_generations: 0,
-            semaphore: None,
-        })?;
+            gemla_context: gemla_context
+        }).await?;
 
         Ok(Box::new(result))
     }
@@ -101,16 +103,16 @@ mod tests {
     use super::*;
     use gemla::core::genetic_node::GeneticNode;
 
-    #[test]
-    fn test_initialize() {
+    #[tokio::test]
+    async fn test_initialize() {
         let state = TestState::initialize(
             GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
-                semaphore: None,
+                gemla_context: (),
             }
-        ).unwrap();
+        ).await.unwrap();
 
         assert_eq!(state.population.len(), POPULATION_SIZE as usize);
     }
@@ -128,7 +130,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
-                semaphore: None,
+                gemla_context: (),
             }
         ).await.unwrap();
         assert!(original_population
@@ -141,7 +143,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
-                semaphore: None,
+                gemla_context: (),
             }
         ).await.unwrap();
         state.simulate(
@@ -149,7 +151,7 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
-                semaphore: None,
+                gemla_context: (),
             }
         ).await.unwrap();
         assert!(original_population
@@ -158,8 +160,8 @@ mod tests {
             .all(|(&a, &b)| b >= a - 3 && b <= a + 6))
     }
 
-    #[test]
-    fn test_mutate() {
+    #[tokio::test]
+    async fn test_mutate() {
         let mut state = TestState {
             population: vec![4, 3, 3],
         };
@@ -169,15 +171,15 @@ mod tests {
                 id: Uuid::new_v4(),
                 generation: 0,
                 max_generations: 0,
-                semaphore: None,
+                gemla_context: (),
             }
-        ).unwrap();
+        ).await.unwrap();
 
         assert_eq!(state.population.len(), POPULATION_SIZE as usize);
     }
 
-    #[test]
-    fn test_merge() {
+    #[tokio::test]
+    async fn test_merge() {
         let state1 = TestState {
             population: vec![1, 2, 4, 5],
         };
@@ -186,7 +188,7 @@ mod tests {
             population: vec![0, 1, 3, 7],
         };
 
-        let merged_state = TestState::merge(&state1, &state2, &Uuid::new_v4()).unwrap();
+        let merged_state = TestState::merge(&state1, &state2, &Uuid::new_v4(), ()).await.unwrap();
 
         assert_eq!(merged_state.population.len(), POPULATION_SIZE as usize);
         assert!(merged_state.population.iter().any(|&x| x == 7));

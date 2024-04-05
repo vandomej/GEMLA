@@ -47,7 +47,6 @@ fn main() -> Result<()> {
                 GemlaConfig {
                     generations_per_height: 5,
                     overwrite: false,
-                    shared_semaphore_concurrency_limit: 50,
                 },
                 DataFormat::Json,
             ))?;
