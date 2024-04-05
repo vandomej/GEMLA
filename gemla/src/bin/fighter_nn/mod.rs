@@ -3,10 +3,11 @@ extern crate fann;
 pub mod neural_network_utility;
 pub mod fighter_context;
 
-use std::{fs::{self, File}, io::{self, BufRead, BufReader}, ops::Range, path::{Path, PathBuf}, sync::Arc};
+use std::{cmp::max, fs::{self, File}, io::{self, BufRead, BufReader}, ops::Range, path::{Path, PathBuf}};
 use fann::{ActivationFunc, Fann};
 use futures::future::join_all;
 use gemla::{core::genetic_node::{GeneticNode, GeneticNodeContext}, error::Error};
+use lerp::Lerp;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use anyhow::Context;
@@ -148,7 +149,7 @@ impl GeneticNode for FighterNN {
                     let random_nn_index = thread_rng().gen_range(0..self_clone.population_size);
                     let folder = self_clone.folder.clone();
                     let generation = self_clone.generation;
-                    let semaphore_clone = Arc::clone(&semaphore_clone);
+                    let semaphore_clone = semaphore_clone.clone();
 
                     let random_nn = folder.join(format!("{}", generation)).join(self_clone.get_individual_id(random_nn_index as u64));
                     let nn_clone = nn.clone(); // Clone the path to use in the async block
@@ -156,7 +157,7 @@ impl GeneticNode for FighterNN {
                     let future = async move {
                         let permit = semaphore_clone.acquire_owned().await.with_context(|| "Failed to acquire semaphore permit")?;
 
-                        let score = run_1v1_simulation(&nn_clone, &random_nn).await?;
+                        let (score, _) = run_1v1_simulation(&nn_clone, &random_nn).await?;
 
                         drop(permit);
 
@@ -262,16 +263,66 @@ impl GeneticNode for FighterNN {
         Ok(())
     }
 
-    async fn merge(left: &FighterNN, right: &FighterNN, id: &Uuid, _: Self::Context) -> Result<Box<FighterNN>, Error> {
+    async fn merge(left: &FighterNN, right: &FighterNN, id: &Uuid, gemla_context: Self::Context) -> Result<Box<FighterNN>, Error> {
         let base_path = PathBuf::from(BASE_DIR);
         let folder = base_path.join(format!("fighter_nn_{:06}", id));
     
         // Ensure the folder exists, including the generation subfolder.
         fs::create_dir_all(&folder.join("0"))
             .with_context(|| format!("Failed to create directory {:?}", folder.join("0")))?;
+
+        let get_highest_scores = |fighter: &FighterNN| -> Vec<(u64, f32)> {
+            let mut sorted_scores: Vec<_> = fighter.scores[fighter.generation as usize].iter().collect();
+            sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
+            sorted_scores.iter().take(fighter.population_size / 2).map(|(k, v)| (**k, **v)).collect()
+        };
+
+        let left_scores = get_highest_scores(left);
+        let right_scores = get_highest_scores(right);
+
+        debug!("Left scores: {:?}", left_scores);
+        debug!("Right scores: {:?}", right_scores);
+
+        let mut simulations = Vec::new();
+
+        for _ in 0..max(left.population_size, right.population_size)*SIMULATION_ROUNDS {
+            let left_nn_id = left_scores[thread_rng().gen_range(0..left_scores.len())].0;
+            let right_nn_id = right_scores[thread_rng().gen_range(0..right_scores.len())].0;
+
+            let left_nn_path = left.folder.join(left.generation.to_string()).join(left.get_individual_id(left_nn_id));
+            let right_nn_path = right.folder.join(right.generation.to_string()).join(right.get_individual_id(right_nn_id));
+            let semaphore_clone = gemla_context.shared_semaphore.clone();
+
+            let future = async move {
+                let permit = semaphore_clone.acquire_owned().await.with_context(|| "Failed to acquire semaphore permit")?;
+
+                let (left_score, right_score) = run_1v1_simulation(&left_nn_path, &right_nn_path).await?;
+
+                drop(permit);
+
+                Ok::<(f32, f32), Error>((left_score, right_score))
+            };
+
+            simulations.push(future);
+        }
+
+        let results: Result<Vec<(f32, f32)>, Error> = join_all(simulations).await.into_iter().collect();
+        let scores = results?;
+
+        let total_left_score = scores.iter().map(|(l, _)| l).sum::<f32>();
+        let total_right_score = scores.iter().map(|(_, r)| r).sum::<f32>();
+
+        debug!("Total left score: {}", total_left_score);
+        debug!("Total right score: {}", total_right_score);
+
+        let score_difference = total_right_score - total_left_score;
+        // Use the sigmoid function to determine lerp amount
+        let lerp_amount = 1.0 / (1.0 + (-score_difference).exp());
+
+        let mut nn_shapes = HashMap::new();
     
         // Function to copy NNs from a source FighterNN to the new folder.
-        let copy_nns = |source: &FighterNN, folder: &PathBuf, id: &Uuid, start_idx: usize| -> Result<(), Error> {
+        let mut copy_nns = |source: &FighterNN, folder: &PathBuf, id: &Uuid, start_idx: usize| -> Result<(), Error> {
             let mut sorted_scores: Vec<_> = source.scores[source.generation as usize].iter().collect();
             sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
             let remaining = sorted_scores[(source.population_size / 2)..].iter().map(|(k, _)| *k).collect::<Vec<_>>();
@@ -281,26 +332,62 @@ impl GeneticNode for FighterNN {
                 let new_nn_path = folder.join("0").join(format!("{:06}_fighter_nn_{}.net", id, start_idx + i));
                 fs::copy(&nn_path, &new_nn_path)
                     .with_context(|| format!("Failed to copy nn from {:?} to {:?}", nn_path, new_nn_path))?;
+
+                nn_shapes.insert((start_idx + i) as u64, source.nn_shapes.get(&nn_id).unwrap().clone());
             }
+
             Ok(())
         };
     
         // Copy the top half of NNs from each parent to the new folder.
         copy_nns(left, &folder, id, 0)?;
         copy_nns(right, &folder, id, left.population_size as usize / 2)?;
+
+        debug!("nn_shapes: {:?}", nn_shapes);
+
+        // Lerp the mutation rates and weight ranges
+        let crossbreed_segments = (left.crossbreed_segments as f32).lerp(right.crossbreed_segments as f32, lerp_amount) as usize;
+
+        let weight_initialization_range_start = left.weight_initialization_range.start.lerp(right.weight_initialization_range.start, lerp_amount);
+        let weight_initialization_range_end = left.weight_initialization_range.end.lerp(right.weight_initialization_range.end, lerp_amount);
+        // Have to ensure the range is valid
+        let weight_initialization_range = if weight_initialization_range_start < weight_initialization_range_end {
+            weight_initialization_range_start..weight_initialization_range_end
+        } else {
+            weight_initialization_range_end..weight_initialization_range_start
+        };
+
+        debug!("weight_initialization_range: {:?}", weight_initialization_range);
+
+        let minor_mutation_rate = left.minor_mutation_rate.lerp(right.minor_mutation_rate, lerp_amount);
+        let major_mutation_rate = left.major_mutation_rate.lerp(right.major_mutation_rate, lerp_amount);
+
+        debug!("minor_mutation_rate: {}", minor_mutation_rate);
+        debug!("major_mutation_rate: {}", major_mutation_rate);
     
+        let mutation_weight_range_start = left.mutation_weight_range.start.lerp(right.mutation_weight_range.start, lerp_amount);
+        let mutation_weight_range_end = left.mutation_weight_range.end.lerp(right.mutation_weight_range.end, lerp_amount);
+        // Have to ensure the range is valid
+        let mutation_weight_range = if mutation_weight_range_start < mutation_weight_range_end {
+            mutation_weight_range_start..mutation_weight_range_end
+        } else {
+            mutation_weight_range_end..mutation_weight_range_start
+        };
+
+        debug!("mutation_weight_range: {:?}", mutation_weight_range);
+
         Ok(Box::new(FighterNN {
             id: *id,
             folder,
             generation: 0,
-            population_size: left.population_size, // Assuming left and right have the same population size.
+            population_size: nn_shapes.len(),
             scores: vec![HashMap::new()],
-            crossbreed_segments: left.crossbreed_segments,
-            nn_shapes: left.nn_shapes.clone(), // Assuming left and right have the same nn_shapes.
-            weight_initialization_range: left.weight_initialization_range.clone(),
-            minor_mutation_rate: left.minor_mutation_rate,
-            major_mutation_rate: left.major_mutation_rate,
-            mutation_weight_range: left.mutation_weight_range.clone(),
+            crossbreed_segments,
+            nn_shapes,
+            weight_initialization_range,
+            minor_mutation_rate,
+            major_mutation_rate,
+            mutation_weight_range,
         }))
     }
 }
@@ -311,7 +398,7 @@ impl FighterNN {
     }
 }
 
-async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<f32, Error> {
+async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<(f32, f32), Error> {
     // Construct the score file path
     let base_folder = nn_path_1.parent().unwrap();
     let nn_1_id = nn_path_1.file_stem().unwrap().to_str().unwrap();
@@ -323,9 +410,13 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
         let round_score = read_score_from_file(&score_file, &nn_1_id).await
             .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        trace!("{} scored {}", nn_1_id, round_score);
+        let opposing_score = read_score_from_file(&score_file, &nn_2_id).await
+            .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        return Ok::<f32, Error>(round_score);
+        trace!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
+
+
+        return Ok((round_score, opposing_score));
     }
 
     // Check if the opposite round score has been determined
@@ -334,9 +425,12 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
         let round_score = read_score_from_file(&opposite_score_file, &nn_1_id).await
             .with_context(|| format!("Failed to read score from file: {:?}", opposite_score_file))?;
 
-        trace!("{} scored {}", nn_1_id, round_score);
+        let opposing_score = read_score_from_file(&opposite_score_file, &nn_2_id).await
+            .with_context(|| format!("Failed to read score from file: {:?}", opposite_score_file))?;
 
-        return Ok::<f32, Error>(1.0 - round_score);
+        trace!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
+
+        return Ok((round_score, opposing_score));
     }
 
     // Run simulation until score file is generated
@@ -368,12 +462,16 @@ async fn run_1v1_simulation(nn_path_1: &PathBuf, nn_path_2: &PathBuf) -> Result<
         let round_score = read_score_from_file(&score_file, &nn_1_id).await
             .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        trace!("{} scored {}", nn_1_id, round_score);
+        let opposing_score = read_score_from_file(&score_file, &nn_2_id).await
+            .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        Ok(round_score)
+        trace!("{} scored {}, while {} scored {}", nn_1_id, round_score, nn_2_id, opposing_score);
+
+
+        return Ok((round_score, opposing_score))
     } else {
         warn!("Score file not found: {:?}", score_file);
-        Ok(0.0)
+        Ok((0.0, 0.0))
     }
 }
 
