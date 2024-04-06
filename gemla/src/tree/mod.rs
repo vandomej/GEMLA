@@ -36,7 +36,7 @@ use std::cmp::max;
 /// t.right = Some(Box::new(btree!(3)));
 /// assert_eq!(t.right.unwrap().val, 3);
 /// ```
-#[derive(Default, Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Default, Serialize, Deserialize, PartialEq, Debug)]
 pub struct Tree<T> {
     pub val: T,
     pub left: Option<Box<Tree<T>>>,

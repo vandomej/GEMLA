@@ -51,7 +51,7 @@ fn main() -> Result<()> {
                     overwrite: false,
                 },
                 DataFormat::Json,
-            ))?;
+            ).await)?;
 
             // let gemla_arc = Arc::new(gemla);
 

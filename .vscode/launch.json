@@ -27,6 +27,38 @@
                 "filter": { }
             },
             "args": [],
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug gemla Lib Tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--manifest-path", "${workspaceFolder}/gemla/Cargo.toml",
+                    "--no-run", // Compiles the tests without running them
+                    "--package=gemla", // Specify your package name if necessary
+                    "--lib"
+                ],
+                "filter": { }
+            },
+            "args": [],
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Rust FileLinked Tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--manifest-path", "${workspaceFolder}/file_linked/Cargo.toml",
+                    "--no-run", // Compiles the tests without running them
+                    "--package=file_linked", // Specify your package name if necessary
+                    "--lib"
+                ],
+                "filter": { }
+            },
+            "args": [],
         }
     ]
 }

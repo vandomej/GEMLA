@@ -60,7 +60,10 @@ pub trait GeneticNode : Send {
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct GeneticNodeWrapper<T> {
+pub struct GeneticNodeWrapper<T> 
+where 
+    T: Clone
+{
     node: Option<T>,
     state: GeneticState,
     generation: u64,
@@ -68,7 +71,10 @@ pub struct GeneticNodeWrapper<T> {
     id: Uuid,
 }
 
-impl<T> Default for GeneticNodeWrapper<T> {
+impl<T> Default for GeneticNodeWrapper<T> 
+where
+    T: Clone
+{
     fn default() -> Self {
         GeneticNodeWrapper {
             node: None,
@@ -82,7 +88,7 @@ impl<T> Default for GeneticNodeWrapper<T> {
 
 impl<T> GeneticNodeWrapper<T>
 where
-    T: GeneticNode + Debug + Send,
+    T: GeneticNode + Debug + Send + Clone,
     T::Context: Send + Sync + Clone + Debug + Serialize + DeserializeOwned + 'static + Default,
 {
     pub fn new(max_generations: u64) -> Self {
@@ -104,6 +110,10 @@ where
 
     pub fn as_ref(&self) -> Option<&T> {
         self.node.as_ref()
+    }
+
+    pub fn take(&mut self) -> Option<T> {
+        self.node.take()
     }
 
     pub fn id(&self) -> Uuid {

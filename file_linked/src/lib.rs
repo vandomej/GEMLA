@@ -6,14 +6,12 @@ pub mod constants;
 use anyhow::{anyhow, Context};
 use constants::data_format::DataFormat;
 use error::Error;
+use futures::executor::block_on;
 use log::info;
 use serde::{de::DeserializeOwned, Serialize};
+use tokio::sync::RwLock;
 use std::{
-    fs::{copy, remove_file, File},
-    io::{ErrorKind, Write},
-    path::{Path, PathBuf},
-    thread,
-    thread::JoinHandle,
+    borrow::Borrow, fs::{copy, remove_file, File}, io::{ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc, thread::{self, JoinHandle}
 };
 
 
@@ -24,7 +22,7 @@ pub struct FileLinked<T>
 where
     T: Serialize,
 {
-    val: T,
+    val: Arc<RwLock<T>>,
     path: PathBuf,
     temp_file_path: PathBuf,
     file_thread: Option<JoinHandle<()>>,
@@ -85,8 +83,8 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn readonly(&self) -> &T {
-        &self.val
+    pub fn readonly(&self) -> Arc<RwLock<T>> {
+        self.val.clone()
     }
 
     /// Creates a new [`FileLinked`] object of type `T` stored to the file given by `path`.
@@ -126,7 +124,7 @@ where
     /// # std::fs::remove_file("./temp").expect("Unable to remove file");
     /// # }
     /// ```
-    pub fn new(val: T, path: &Path, data_format: DataFormat) -> Result<FileLinked<T>, Error> {
+    pub async fn new(val: T, path: &Path, data_format: DataFormat) -> Result<FileLinked<T>, Error> {
         let mut temp_file_path = path.to_path_buf();
         temp_file_path.set_file_name(format!(
             ".temp{}",
@@ -137,24 +135,26 @@ where
         ));
 
         let mut result = FileLinked {
-            val,
+            val: Arc::new(RwLock::new(val)),
             path: path.to_path_buf(),
             temp_file_path,
             file_thread: None,
             data_format
         };
 
-        result.write_data()?;
+        result.write_data().await?;
         Ok(result)
     }
 
-    fn write_data(&mut self) -> Result<(), Error> {
+    async fn write_data(&mut self) -> Result<(), Error> {
         let thread_path = self.path.clone();
         let thread_temp_path = self.temp_file_path.clone();
+        let val = self.val.read().await;
+
         let thread_val = match self.data_format {
-            DataFormat::Bincode => bincode::serialize(&self.val)
+            DataFormat::Bincode => bincode::serialize(&*val)
                 .with_context(|| "Unable to serialize object into bincode".to_string())?,
-            DataFormat::Json => serde_json::to_vec(&self.val)
+            DataFormat::Json => serde_json::to_vec(&*val)
                 .with_context(|| "Unable to serialize object into JSON".to_string())?,
         };
 
@@ -238,10 +238,15 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn mutate<U, F: FnOnce(&mut T) -> U>(&mut self, op: F) -> Result<U, Error> {
-        let result = op(&mut self.val);
+    pub async fn mutate<U, F: FnOnce(&mut T) -> U>(&mut self, op: F) -> Result<U, Error> {
+        let val_clone = self.val.clone(); // Arc<RwLock<T>>
+        let mut val = val_clone.write().await; // RwLockWriteGuard<T>
 
-        self.write_data()?;
+        let result = op(&mut val);
+
+        drop(val);
+
+        self.write_data().await?;
 
         Ok(result)
     }
@@ -292,10 +297,31 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn replace(&mut self, val: T) -> Result<(), Error> {
-        self.val = val;
+    pub async fn replace(&mut self, val: T) -> Result<(), Error> {
+        self.val = Arc::new(RwLock::new(val));
 
-        self.write_data()
+        self.write_data().await
+    }
+}
+
+impl<T> FileLinked<T>
+where
+    T: Serialize + DeserializeOwned + Send + 'static,
+{
+    /// Asynchronously modifies the data contained in a `FileLinked` object using an async callback `op`.
+    pub async fn mutate_async<F, Fut, U>(&mut self, op: F) -> Result<U, Error>
+    where
+        F: FnOnce(Arc<RwLock<T>>) -> Fut,
+        Fut: std::future::Future<Output = U> + Send,
+        U: Send,
+    {
+        let val_clone = self.val.clone();
+        let result = op(val_clone).await;
+
+        self.write_data().await?;
+
+
+        Ok(result)
     }
 }
 
@@ -377,7 +403,7 @@ where
             }
         }) {
             Ok(val) => Ok(FileLinked {
-                val,
+                val: Arc::new(RwLock::new(val)),
                 path: path.to_path_buf(),
                 temp_file_path,
                 file_thread: None,
@@ -396,7 +422,7 @@ where
                     .with_context(|| format!("Failed to read/deserialize the object from the file {} and temp file {}", path.display(), temp_file_path.display()))?;
 
                 Ok(FileLinked {
-                    val,
+                    val: Arc::new(RwLock::new(val)),
                     path: path.to_path_buf(),
                     temp_file_path,
                     file_thread: None,
@@ -451,8 +477,12 @@ mod tests {
             }
         }
 
-        pub fn run<F: FnOnce(&Path) -> Result<(), Error>>(&self, op: F) -> Result<(), Error> {
-            op(&self.path)
+        pub async fn run<F, Fut>(&self, op: F) -> ()
+        where
+            F: FnOnce(PathBuf) -> Fut,
+            Fut: std::future::Future<Output = ()>
+        {
+            op(self.path.clone()).await
         }
     }
 
@@ -464,92 +494,136 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_readonly() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_readonly() {
         let path = PathBuf::from("test_readonly");
         let cleanup = CleanUp::new(&path);
-        cleanup.run(|p| {
+        cleanup.run(|p| async move {
             let val = vec!["one", "two", ""];
 
-            let linked_object = FileLinked::new(val.clone(), &p, DataFormat::Json)?;
-            assert_eq!(*linked_object.readonly(), val);
-
-            Ok(())
-        })
+            let linked_object = FileLinked::new(val.clone(), &p, DataFormat::Json).await.expect("Unable to create file linked object");
+            let linked_object_arc = linked_object.readonly();
+            let linked_object_ref = linked_object_arc.read().await;
+            assert_eq!(*linked_object_ref, val);
+        }).await;
     }
 
-    #[test]
-    fn test_new() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_new() {
         let path = PathBuf::from("test_new");
         let cleanup = CleanUp::new(&path);
-        cleanup.run(|p| {
+        cleanup.run(|p| async move {
             let val = "test";
 
-            FileLinked::new(val, &p, DataFormat::Bincode)?;
+            FileLinked::new(val, &p, DataFormat::Bincode).await.expect("Unable to create file linked object");
 
-            let file = File::open(&p)?;
+            let file = File::open(&p).expect("Unable to open file");
             let result: String =
                 bincode::deserialize_from(file).expect("Unable to deserialize from file");
             assert_eq!(result, val);
-
-            Ok(())
-        })
+        }).await;
     }
 
-    #[test]
-    fn test_mutate() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_mutate() {
         let path = PathBuf::from("test_mutate");
         let cleanup = CleanUp::new(&path);
-        cleanup.run(|p| {
+        cleanup.run(|p| async move {
             let list = vec![1, 2, 3, 4];
-            let mut file_linked_list = FileLinked::new(list, &p, DataFormat::Json)?;
-            assert_eq!(*file_linked_list.readonly(), vec![1, 2, 3, 4]);
+            let mut file_linked_list = FileLinked::new(list, &p, DataFormat::Json).await.expect("Unable to create file linked object");
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
 
-            file_linked_list.mutate(|v1| v1.push(5))?;
-            assert_eq!(*file_linked_list.readonly(), vec![1, 2, 3, 4, 5]);
+            assert_eq!(*file_linked_list_ref, vec![1, 2, 3, 4]);
 
-            file_linked_list.mutate(|v1| v1[1] = 1)?;
-            assert_eq!(*file_linked_list.readonly(), vec![1, 1, 3, 4, 5]);
+            drop(file_linked_list_ref);
+            file_linked_list.mutate(|v1| v1.push(5)).await.expect("Error mutating file linked object");
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
+
+            assert_eq!(*file_linked_list_ref, vec![1, 2, 3, 4, 5]);
+
+            drop(file_linked_list_ref);
+            file_linked_list.mutate(|v1| v1[1] = 1).await.expect("Error mutating file linked object");
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
+
+            assert_eq!(*file_linked_list_ref, vec![1, 1, 3, 4, 5]);
 
             drop(file_linked_list);
-            Ok(())
-        })
+        }).await;
     }
 
-    #[test]
-    fn test_replace() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_async_mutate() {
+        let path = PathBuf::from("test_async_mutate");
+        let cleanup = CleanUp::new(&path);
+        cleanup.run(|p| async move {
+            let list = vec![1, 2, 3, 4];
+            let mut file_linked_list = FileLinked::new(list, &p, DataFormat::Json).await.expect("Unable to create file linked object");
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
+
+            assert_eq!(*file_linked_list_ref, vec![1, 2, 3, 4]);
+
+            drop(file_linked_list_ref);
+            file_linked_list.mutate_async(|v1| async move {
+                let mut v = v1.write().await;
+                v.push(5);
+                v[1] = 1;
+                Ok::<(), Error>(())
+            }).await.expect("Error mutating file linked object").expect("Error mutating file linked object");
+
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
+
+            assert_eq!(*file_linked_list_ref, vec![1, 1, 3, 4, 5]);
+
+            drop(file_linked_list);
+        }).await;
+    }
+
+    #[tokio::test]
+    async fn test_replace() {
         let path = PathBuf::from("test_replace");
         let cleanup = CleanUp::new(&path);
-        cleanup.run(|p| {
+        cleanup.run(|p| async move {
             let val1 = String::from("val1");
             let val2 = String::from("val2");
-            let mut file_linked_list = FileLinked::new(val1.clone(), &p, DataFormat::Bincode)?;
-            assert_eq!(*file_linked_list.readonly(), val1);
+            let mut file_linked_list = FileLinked::new(val1.clone(), &p, DataFormat::Bincode).await.expect("Unable to create file linked object");
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
 
-            file_linked_list.replace(val2.clone())?;
-            assert_eq!(*file_linked_list.readonly(), val2);
+            assert_eq!(*file_linked_list_ref, val1);
+
+            file_linked_list.replace(val2.clone()).await.expect("Error replacing file linked object");
+            let file_linked_list_arc = file_linked_list.readonly();
+            let file_linked_list_ref = file_linked_list_arc.read().await;
+
+            assert_eq!(*file_linked_list_ref, val2);
 
             drop(file_linked_list);
-            Ok(())
-        })
+        }).await;
     }
 
-    #[test]
-    fn test_from_file() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_from_file(){
         let path = PathBuf::from("test_from_file");
         let cleanup = CleanUp::new(&path);
-        cleanup.run(|p| {
+        cleanup.run(|p| async move {
             let value: Vec<f64> = vec![2.0, 3.0, 5.0];
-            let file = File::create(&p)?;
+            let file = File::create(&p).expect("Unable to create file");
 
             bincode::serialize_into(&file, &value).expect("Unable to serialize into file");
             drop(file);
 
-            let linked_object: FileLinked<Vec<f64>> = FileLinked::from_file(&p, DataFormat::Bincode)?;
-            assert_eq!(*linked_object.readonly(), value);
+            let linked_object: FileLinked<Vec<f64>> = FileLinked::from_file(&p, DataFormat::Bincode).expect("Unable to create file linked object");
+            let linked_object_arc = linked_object.readonly();
+            let linked_object_ref = linked_object_arc.read().await;
+
+            assert_eq!(*linked_object_ref, value);
 
             drop(linked_object);
-            Ok(())
-        })
+        }).await;
     }
 }
