@@ -162,6 +162,7 @@ impl GeneticNode for FighterNN {
         for i in 0..self.population_size {
             let self_clone = self.clone();
             let semaphore_clone = context.gemla_context.shared_semaphore.clone();
+            let display_simulation_semaphore = context.gemla_context.visible_simulations.clone();
 
             let task = async move {
                 let nn = self_clone
@@ -176,6 +177,7 @@ impl GeneticNode for FighterNN {
                     let folder = self_clone.folder.clone();
                     let generation = self_clone.generation;
                     let semaphore_clone = semaphore_clone.clone();
+                    let display_simulation_semaphore = display_simulation_semaphore.clone();
 
                     let random_nn = folder
                         .join(format!("{}", generation))
@@ -188,7 +190,19 @@ impl GeneticNode for FighterNN {
                             .await
                             .with_context(|| "Failed to acquire semaphore permit")?;
 
-                        let (score, _) = run_1v1_simulation(&nn_clone, &random_nn).await?;
+                        let display_simulation =
+                            match display_simulation_semaphore.try_acquire_owned() {
+                                Ok(s) => Some(s),
+                                Err(_) => None,
+                            };
+
+                        let (score, _) = if let Some(display_simulation) = display_simulation {
+                            let result = run_1v1_simulation(&nn_clone, &random_nn, true).await?;
+                            drop(display_simulation);
+                            result
+                        } else {
+                            run_1v1_simulation(&nn_clone, &random_nn, false).await?
+                        };
 
                         drop(permit);
 
@@ -206,7 +220,7 @@ impl GeneticNode for FighterNN {
                     Ok(scores) => scores.into_iter().sum::<f32>() / SIMULATION_ROUNDS as f32,
                     Err(e) => return Err(e), // Return the error if results collection failed
                 };
-                trace!("NN {:06}_fighter_nn_{} scored {}", self_clone.id, i, score);
+                debug!("NN {:06}_fighter_nn_{} scored {}", self_clone.id, i, score);
                 Ok((i, score))
             };
 
@@ -366,6 +380,7 @@ impl GeneticNode for FighterNN {
                 .join(right.generation.to_string())
                 .join(right.get_individual_id(right_nn_id));
             let semaphore_clone = gemla_context.shared_semaphore.clone();
+            let display_simulation_semaphore = gemla_context.visible_simulations.clone();
 
             let future = async move {
                 let permit = semaphore_clone
@@ -373,8 +388,19 @@ impl GeneticNode for FighterNN {
                     .await
                     .with_context(|| "Failed to acquire semaphore permit")?;
 
-                let (left_score, right_score) =
-                    run_1v1_simulation(&left_nn_path, &right_nn_path).await?;
+                let display_simulation = match display_simulation_semaphore.try_acquire_owned() {
+                    Ok(s) => Some(s),
+                    Err(_) => None,
+                };
+
+                let (left_score, right_score) = if let Some(display_simulation) = display_simulation
+                {
+                    let result = run_1v1_simulation(&left_nn_path, &right_nn_path, true).await?;
+                    drop(display_simulation);
+                    result
+                } else {
+                    run_1v1_simulation(&left_nn_path, &right_nn_path, false).await?
+                };
 
                 drop(permit);
 
@@ -397,6 +423,8 @@ impl GeneticNode for FighterNN {
         let score_difference = total_right_score - total_left_score;
         // Use the sigmoid function to determine lerp amount
         let lerp_amount = 1.0 / (1.0 + (-score_difference).exp());
+
+        debug!("Lerp amount: {}", lerp_amount);
 
         let mut nn_shapes = HashMap::new();
 
@@ -517,7 +545,11 @@ impl FighterNN {
     }
 }
 
-async fn run_1v1_simulation(nn_path_1: &Path, nn_path_2: &Path) -> Result<(f32, f32), Error> {
+async fn run_1v1_simulation(
+    nn_path_1: &Path,
+    nn_path_2: &Path,
+    display_simulation: bool,
+) -> Result<(f32, f32), Error> {
     // Construct the score file path
     let base_folder = nn_path_1.parent().unwrap();
     let nn_1_id = nn_path_1.file_stem().unwrap().to_str().unwrap();
@@ -574,7 +606,7 @@ async fn run_1v1_simulation(nn_path_1: &Path, nn_path_2: &Path) -> Result<(f32, 
 
     trace!("Running simulation for {} vs {}", nn_1_id, nn_2_id);
 
-    let _output = if thread_rng().gen_range(0..100) < 1 {
+    let _output = if display_simulation {
         Command::new(GAME_EXECUTABLE_PATH)
             .arg(&config1_arg)
             .arg(&config2_arg)

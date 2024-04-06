@@ -36,7 +36,7 @@ def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5)
     return _hierarchy_pos(G, root, width, vert_gap, vert_loc, xcenter)
 
 # Simplified JSON data for demonstration
-with open('gemla/test.json', 'r') as file:
+with open('gemla/round2.json', 'r') as file:
     simplified_json_data = json.load(file)
 
 # Function to traverse the tree and create a graph
