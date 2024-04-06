@@ -6,12 +6,11 @@ pub mod constants;
 use anyhow::{anyhow, Context};
 use constants::data_format::DataFormat;
 use error::Error;
-use futures::executor::block_on;
 use log::info;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::RwLock;
 use std::{
-    borrow::Borrow, fs::{copy, remove_file, File}, io::{ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc, thread::{self, JoinHandle}
+    fs::{copy, remove_file, File}, io::{ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc, thread::{self, JoinHandle}
 };
 
 
@@ -56,6 +55,7 @@ where
     /// # use std::fmt;
     /// # use std::string::ToString;
     /// # use std::path::PathBuf;
+    /// # use tokio;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -64,19 +64,22 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() {
+    /// # #[tokio::main]
+    /// # async fn main() {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from("two"),
     ///     c: 3.0
     /// };
     ///
-    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Json)
+    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Json).await
     ///     .expect("Unable to create file linked object");
     ///
-    /// assert_eq!(linked_test.readonly().a, 1);
-    /// assert_eq!(linked_test.readonly().b, String::from("two"));
-    /// assert_eq!(linked_test.readonly().c, 3.0);
+    /// let readonly = linked_test.readonly();
+    /// let readonly_ref = readonly.read().await;
+    /// assert_eq!(readonly_ref.a, 1);
+    /// assert_eq!(readonly_ref.b, String::from("two"));
+    /// assert_eq!(readonly_ref.c, 3.0);
     /// #
     /// # drop(linked_test);
     /// #
@@ -97,6 +100,7 @@ where
     /// # use std::fmt;
     /// # use std::string::ToString;
     /// # use std::path::PathBuf;
+    /// # use tokio;
     /// #
     /// #[derive(Deserialize, Serialize)]
     /// struct Test {
@@ -105,19 +109,22 @@ where
     ///     pub c: f64
     /// }
     ///
-    /// # fn main() {
+    /// #[tokio::main]
+    /// # async fn main() {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from("two"),
     ///     c: 3.0
     /// };
     ///
-    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Json)
+    /// let linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Json).await
     ///     .expect("Unable to create file linked object");
     ///
-    /// assert_eq!(linked_test.readonly().a, 1);
-    /// assert_eq!(linked_test.readonly().b, String::from("two"));
-    /// assert_eq!(linked_test.readonly().c, 3.0);
+    /// let readonly = linked_test.readonly();
+    /// let readonly_ref = readonly.read().await;
+    /// assert_eq!(readonly_ref.a, 1);
+    /// assert_eq!(readonly_ref.b, String::from("two"));
+    /// assert_eq!(readonly_ref.c, 3.0);
     /// #
     /// # drop(linked_test);
     /// #
@@ -207,6 +214,7 @@ where
     /// # use std::fmt;
     /// # use std::string::ToString;
     /// # use std::path::PathBuf;
+    /// # use tokio;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -215,21 +223,28 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() -> Result<(), Error> {
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Error> {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from(""),
     ///     c: 0.0
     /// };
     ///
-    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Bincode)
+    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Bincode).await
     ///     .expect("Unable to create file linked object");
     ///
-    /// assert_eq!(linked_test.readonly().a, 1);
+    /// {
+    ///     let readonly = linked_test.readonly();
+    ///     let readonly_ref = readonly.read().await;
+    ///     assert_eq!(readonly_ref.a, 1);
+    /// }
     ///
-    /// linked_test.mutate(|t| t.a = 2)?;
+    /// linked_test.mutate(|t| t.a = 2).await?;
     ///
-    /// assert_eq!(linked_test.readonly().a, 2);
+    /// let readonly = linked_test.readonly();
+    /// let readonly_ref = readonly.read().await;
+    /// assert_eq!(readonly_ref.a, 2);
     /// #
     /// # drop(linked_test);
     /// #
@@ -262,6 +277,7 @@ where
     /// # use std::fmt;
     /// # use std::string::ToString;
     /// # use std::path::PathBuf;
+    /// # use tokio;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -270,25 +286,30 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() -> Result<(), Error> {
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Error> {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from(""),
     ///     c: 0.0
     /// };
     ///
-    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Bincode)
+    /// let mut linked_test = FileLinked::new(test, &PathBuf::from("./temp"), DataFormat::Bincode).await
     ///     .expect("Unable to create file linked object");
     ///
-    /// assert_eq!(linked_test.readonly().a, 1);
+    /// let readonly = linked_test.readonly();
+    /// let readonly_ref = readonly.read().await;
+    /// assert_eq!(readonly_ref.a, 1);
     ///
     /// linked_test.replace(Test {
     ///     a: 2,
     ///     b: String::from(""),
     ///     c: 0.0
-    /// })?;
+    /// }).await?;
     ///
-    /// assert_eq!(linked_test.readonly().a, 2);
+    /// let readonly = linked_test.readonly();
+    /// let readonly_ref = readonly.read().await;
+    /// assert_eq!(readonly_ref.a, 2);
     /// #
     /// # drop(linked_test);
     /// #
@@ -343,6 +364,7 @@ where
     /// # use std::fs::OpenOptions;
     /// # use std::io::Write;
     /// # use std::path::PathBuf;
+    /// # use tokio;
     /// #
     /// # #[derive(Deserialize, Serialize)]
     /// # struct Test {
@@ -351,7 +373,8 @@ where
     /// #     pub c: f64
     /// # }
     /// #
-    /// # fn main() -> Result<(), Error> {
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Error> {
     /// let test = Test {
     ///     a: 1,
     ///     b: String::from("2"),
@@ -371,9 +394,11 @@ where
     /// let mut linked_test = FileLinked::<Test>::from_file(&path, DataFormat::Bincode)
     ///     .expect("Unable to create file linked object");
     ///
-    /// assert_eq!(linked_test.readonly().a, test.a);
-    /// assert_eq!(linked_test.readonly().b, test.b);
-    /// assert_eq!(linked_test.readonly().c, test.c);
+    /// let readonly = linked_test.readonly();
+    /// let readonly_ref = readonly.read().await;
+    /// assert_eq!(readonly_ref.a, test.a);
+    /// assert_eq!(readonly_ref.b, test.b);
+    /// assert_eq!(readonly_ref.c, test.c);
     /// #
     /// # drop(linked_test);
     /// #

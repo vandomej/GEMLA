@@ -5,10 +5,10 @@
 use crate::error::Error;
 
 use anyhow::Context;
+use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 use uuid::Uuid;
-use async_trait::async_trait;
 
 /// An enum used to control the state of a [`GeneticNode`]
 ///
@@ -30,14 +30,14 @@ pub struct GeneticNodeContext<S> {
     pub generation: u64,
     pub max_generations: u64,
     pub id: Uuid,
-    pub gemla_context: S
+    pub gemla_context: S,
 }
 
 /// A trait used to interact with the internal state of nodes within the [`Bracket`]
 ///
 /// [`Bracket`]: crate::bracket::Bracket
 #[async_trait]
-pub trait GeneticNode : Send {
+pub trait GeneticNode: Send {
     type Context;
 
     /// Initializes a new instance of a [`GeneticState`].
@@ -54,15 +54,20 @@ pub trait GeneticNode : Send {
     /// TODO
     async fn mutate(&mut self, context: GeneticNodeContext<Self::Context>) -> Result<(), Error>;
 
-    async fn merge(left: &Self, right: &Self, id: &Uuid, context: Self::Context) -> Result<Box<Self>, Error>;
+    async fn merge(
+        left: &Self,
+        right: &Self,
+        id: &Uuid,
+        context: Self::Context,
+    ) -> Result<Box<Self>, Error>;
 }
 
 /// Used externally to wrap a node implementing the [`GeneticNode`] trait. Processes state transitions for the given node as
 /// well as signal recovery. Transition states are given by [`GeneticState`]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct GeneticNodeWrapper<T> 
-where 
-    T: Clone
+pub struct GeneticNodeWrapper<T>
+where
+    T: Clone,
 {
     node: Option<T>,
     state: GeneticState,
@@ -71,9 +76,9 @@ where
     id: Uuid,
 }
 
-impl<T> Default for GeneticNodeWrapper<T> 
+impl<T> Default for GeneticNodeWrapper<T>
 where
-    T: Clone
+    T: Clone,
 {
     fn default() -> Self {
         GeneticNodeWrapper {
@@ -146,7 +151,8 @@ where
                 self.state = GeneticState::Simulate;
             }
             (GeneticState::Simulate, Some(n)) => {
-                n.simulate(context.clone()).await
+                n.simulate(context.clone())
+                    .await
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
 
                 self.state = if self.generation >= self.max_generations {
@@ -156,7 +162,8 @@ where
                 };
             }
             (GeneticState::Mutate, Some(n)) => {
-                n.mutate(context.clone()).await
+                n.mutate(context.clone())
+                    .await
                     .with_context(|| format!("Error mutating node: {:?}", self))?;
 
                 self.generation += 1;
@@ -186,20 +193,33 @@ mod tests {
     impl GeneticNode for TestState {
         type Context = ();
 
-        async fn simulate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
+        async fn simulate(
+            &mut self,
+            _context: GeneticNodeContext<Self::Context>,
+        ) -> Result<(), Error> {
             self.score += 1.0;
             Ok(())
         }
 
-        async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
+        async fn mutate(
+            &mut self,
+            _context: GeneticNodeContext<Self::Context>,
+        ) -> Result<(), Error> {
             Ok(())
         }
 
-        async fn initialize(_context: GeneticNodeContext<Self::Context>) -> Result<Box<TestState>, Error> {
+        async fn initialize(
+            _context: GeneticNodeContext<Self::Context>,
+        ) -> Result<Box<TestState>, Error> {
             Ok(Box::new(TestState { score: 0.0 }))
         }
 
-        async fn merge(_l: &TestState, _r: &TestState, _id: &Uuid, _: Self::Context) -> Result<Box<TestState>, Error> {
+        async fn merge(
+            _l: &TestState,
+            _r: &TestState,
+            _id: &Uuid,
+            _: Self::Context,
+        ) -> Result<Box<TestState>, Error> {
             Err(Error::Other(anyhow!("Unable to merge")))
         }
     }

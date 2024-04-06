@@ -5,7 +5,6 @@ use tokio::sync::Semaphore;
 
 const SHARED_SEMAPHORE_CONCURRENCY_LIMIT: usize = 50;
 
-
 #[derive(Debug, Clone)]
 pub struct FighterContext {
     pub shared_semaphore: Arc<Semaphore>,
@@ -18,7 +17,6 @@ impl Default for FighterContext {
         }
     }
 }
-
 
 // Custom serialization to just output the concurrency limit.
 impl Serialize for FighterContext {

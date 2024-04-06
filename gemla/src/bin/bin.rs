@@ -3,18 +3,18 @@ extern crate gemla;
 #[macro_use]
 extern crate log;
 
-mod test_state;
 mod fighter_nn;
+mod test_state;
 
+use anyhow::Result;
+use clap::Parser;
+use fighter_nn::FighterNN;
 use file_linked::constants::data_format::DataFormat;
 use gemla::{
     core::{Gemla, GemlaConfig},
     error::log_error,
 };
 use std::{path::PathBuf, time::Instant};
-use fighter_nn::FighterNN;
-use clap::Parser;
-use anyhow::Result;
 
 // const NUM_THREADS: usize = 2;
 
@@ -39,19 +39,22 @@ fn main() -> Result<()> {
 
     // Manually configure the Tokio runtime
     let runtime: Result<()> = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(num_cpus::get()) 
-        // .worker_threads(NUM_THREADS) 
+        .worker_threads(num_cpus::get())
+        // .worker_threads(NUM_THREADS)
         .build()?
         .block_on(async {
             let args = Args::parse(); // Assuming Args::parse() doesn't need to be async
-            let mut gemla = log_error(Gemla::<FighterNN>::new(
-                &PathBuf::from(args.file),
-                GemlaConfig {
-                    generations_per_height: 5,
-                    overwrite: false,
-                },
-                DataFormat::Json,
-            ).await)?;
+            let mut gemla = log_error(
+                Gemla::<FighterNN>::new(
+                    &PathBuf::from(args.file),
+                    GemlaConfig {
+                        generations_per_height: 5,
+                        overwrite: false,
+                    },
+                    DataFormat::Json,
+                )
+                .await,
+            )?;
 
             // let gemla_arc = Arc::new(gemla);
 
@@ -59,7 +62,8 @@ fn main() -> Result<()> {
             // If `gemla::simulate` needs to run sequentially, simply call it in sequence without spawning new tasks
 
             // Example placeholder loop to continuously run simulate
-            loop { // Arbitrary loop count for demonstration
+            loop {
+                // Arbitrary loop count for demonstration
                 gemla.simulate(1).await?;
             }
         });
