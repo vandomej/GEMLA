@@ -45,11 +45,12 @@ impl Serialize for FighterContext {
 
 // Custom deserialization to reconstruct the FighterContext from a concurrency limit.
 impl<'de> Deserialize<'de> for FighterContext {
-    fn deserialize<D>(_: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         // Deserialize the tuple
+        let (_, _) = <(usize, usize)>::deserialize(deserializer)?;
         Ok(FighterContext {
             shared_semaphore: Arc::new(Semaphore::new(SHARED_SEMAPHORE_CONCURRENCY_LIMIT)),
             visible_simulations: Arc::new(Semaphore::new(VISIBLE_SIMULATIONS_CONCURRENCY_LIMIT)),

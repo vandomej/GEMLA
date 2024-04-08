@@ -9,7 +9,9 @@ use rand::{
     thread_rng, Rng,
 };
 
-use super::{FighterNN, NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN};
+use super::{
+    FighterNN, NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX, NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN,
+};
 
 /// Crossbreeds two neural networks of different shapes by finding cut points, and swapping neurons between the two networks.
 /// Algorithm tries to ensure similar functionality is maintained between the two networks.
@@ -109,6 +111,7 @@ pub fn consolidate_old_connections(
     let secondary_shape = secondary.get_layer_sizes();
     debug!("Primary shape: {:?}", primary_shape);
     debug!("Secondary shape: {:?}", secondary_shape);
+    debug!("New shape: {:?}", new_shape);
 
     // Start by iterating layer by later
     let primary_connections = primary.get_connections();
@@ -564,6 +567,25 @@ pub fn crossbreed_neuron_arrays(
         .filter(|&(_, _, layer, _)| layer_counts[layer] >= NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN)
         .collect::<Vec<_>>();
 
+    // If a layer has more than NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX, remove the neurons with the highest id
+    for layer in 1..layer_counts.len() - 1 {
+        let new_neurons_clone = new_neurons.clone();
+        let layer_neurons = new_neurons_clone
+            .iter()
+            .filter(|(_, _, l, _)| l == &layer)
+            .collect::<Vec<_>>();
+        if layer_neurons.len() > NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX {
+            let mut sorted_neurons = layer_neurons.clone();
+            // Take primary neurons first, order by highest id
+            sorted_neurons.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+            let neurons_to_remove = sorted_neurons.len() - NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX;
+            for _ in 0..neurons_to_remove {
+                let neuron_to_remove = sorted_neurons.pop().unwrap();
+                new_neurons.retain(|neuron| neuron != neuron_to_remove);
+            }
+        }
+    }
+
     // Collect and sort unique layer numbers
     let mut unique_layers = new_neurons
         .iter()
@@ -606,7 +628,7 @@ pub fn major_mutation(fann: &Fann, weight_initialization_range: Range<f32>) -> R
         .collect::<Vec<_>>();
 
     // Determine first whether to add or remove a neuron
-    if thread_rng().gen_range(0..2) == 0 {
+    if thread_rng().gen_bool(0.5) {
         // To add a neuron we need to create a new fann object with the new layer sizes, then copy the information and connections over
         let max_id = mutated_neurons
             .iter()
@@ -616,9 +638,12 @@ pub fn major_mutation(fann: &Fann, weight_initialization_range: Range<f32>) -> R
 
         // Now we inject the new neuron into mutated_neurons
         let layer = thread_rng().gen_range(1..fann.get_num_layers() - 1) as usize;
-        let new_id = max_id + 1;
-        mutated_neurons.push((new_id, true, layer, new_id));
-        mutated_shape[layer] += 1;
+        // Do not add to layer if it would result in more than NEURALNETWORK_HIDDEN_LAYER_SIZE_MAX neurons
+        if mutated_shape[layer] < NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX as u32 {
+            let new_id = max_id + 1;
+            mutated_neurons.push((new_id, true, layer, new_id));
+            mutated_shape[layer] += 1;
+        }
     } else {
         // Remove a neuron
         let layer = thread_rng().gen_range(1..fann.get_num_layers() - 1) as usize;

@@ -65,6 +65,9 @@ def traverse(node, graph, parent=None):
                 overall_max_score_individual = individual_with_max_score_for_gen
                 overall_max_score_gen = gen
 
+        # print debug statement
+        # print(f"Node {node_id}: Max score: {overall_max_score:.6f} (Individual {overall_max_score_individual} in Gen {overall_max_score_gen})")
+        # print(f"Left: {node.get('left')}, Right: {node.get('right')}")
         label = f"{node_id}\nGenerations: {generations}, Population: {population_size}\nMax score: {overall_max_score:.6f} (Individual {overall_max_score_individual} in Gen {overall_max_score_gen})"
     else:
         label = node_id

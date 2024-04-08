@@ -260,10 +260,10 @@ where
                         && r.val.state() == GeneticState::Finish =>
                 {
                     info!("Merging nodes {} and {}", l.val.id(), r.val.id());
-                    if let (Some(left_node), Some(right_node)) = (l.val.take(), r.val.take()) {
+                    if let (Some(left_node), Some(right_node)) = (l.val.as_ref(), r.val.as_ref()) {
                         let merged_node = GeneticNode::merge(
-                            &left_node,
-                            &right_node,
+                            left_node,
+                            right_node,
                             &tree.val.id(),
                             gemla_context.clone(),
                         )
@@ -283,9 +283,9 @@ where
                 (Some(l), None) if l.val.state() == GeneticState::Finish => {
                     trace!("Copying node {}", l.val.id());
 
-                    if let Some(left_node) = l.val.take() {
+                    if let Some(left_node) = l.val.as_ref() {
                         GeneticNodeWrapper::from(
-                            left_node,
+                            left_node.clone(),
                             tree.val.max_generations(),
                             tree.val.id(),
                         );
@@ -295,9 +295,9 @@ where
                 (None, Some(r)) if r.val.state() == GeneticState::Finish => {
                     trace!("Copying node {}", r.val.id());
 
-                    if let Some(right_node) = r.val.take() {
+                    if let Some(right_node) = r.val.as_ref() {
                         tree.val = GeneticNodeWrapper::from(
-                            right_node,
+                            right_node.clone(),
                             tree.val.max_generations(),
                             tree.val.id(),
                         );

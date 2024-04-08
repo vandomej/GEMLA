@@ -103,7 +103,9 @@ impl GeneticNode for FighterNN {
         // Create the first generation in this folder
         for i in 0..POPULATION {
             // Filenames are stored in the format of "xxxxxx_fighter_nn_0.net", "xxxxxx_fighter_nn_1.net", etc. Where xxxxxx is the folder name
-            let nn = gen_folder.join(format!("{:06}_fighter_nn_{}.net", context.id, i));
+            let nn = gen_folder
+                .join(format!("{:06}_fighter_nn_{}", context.id, i))
+                .with_extension("net");
 
             // Randomly generate a neural network shape based on constants
             let hidden_layers = thread_rng()
@@ -168,7 +170,8 @@ impl GeneticNode for FighterNN {
                 let nn = self_clone
                     .folder
                     .join(format!("{}", self_clone.generation))
-                    .join(self_clone.get_individual_id(i as u64));
+                    .join(self_clone.get_individual_id(i as u64))
+                    .with_extension("net");
                 let mut simulations = Vec::new();
 
                 // Using the same original nn, repeat the simulation with 5 random nn's from the current generation concurrently
@@ -181,7 +184,8 @@ impl GeneticNode for FighterNN {
 
                     let random_nn = folder
                         .join(format!("{}", generation))
-                        .join(self_clone.get_individual_id(random_nn_index as u64));
+                        .join(self_clone.get_individual_id(random_nn_index as u64))
+                        .with_extension("net");
                     let nn_clone = nn.clone(); // Clone the path to use in the async block
 
                     let future = async move {
@@ -250,6 +254,7 @@ impl GeneticNode for FighterNN {
 
     async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
         let survivor_count = (self.population_size as f32 * SURVIVAL_RATE) as usize;
+        let mut nn_sizes = Vec::new();
 
         // Create the new generation folder
         let new_gen_folder = self.folder.join(format!("{}", self.generation + 1));
@@ -262,11 +267,10 @@ impl GeneticNode for FighterNN {
 
         // Remove the 5 nn's with the lowest scores
         let mut sorted_scores: Vec<_> = self.scores[self.generation as usize].iter().collect();
-        sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
-        let to_keep = sorted_scores[survivor_count..]
-            .iter()
-            .map(|(k, _)| *k)
-            .collect::<Vec<_>>();
+        sorted_scores.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
+        let scores_to_keep: Vec<&(&u64, &f32)> =
+            sorted_scores.iter().take(survivor_count).collect();
+        let to_keep = scores_to_keep.iter().map(|(k, _)| *k).collect::<Vec<_>>();
 
         // Save the remaining 5 nn's to the new generation folder
         for (i, nn_id) in to_keep.iter().enumerate().take(survivor_count) {
@@ -275,58 +279,94 @@ impl GeneticNode for FighterNN {
                 .join(format!("{}", self.generation))
                 .join(format!("{:06}_fighter_nn_{}.net", self.id, nn_id));
             let new_nn = new_gen_folder.join(format!("{:06}_fighter_nn_{}.net", self.id, i));
+            debug!("Copying nn from {:?} to {:?}", nn_id, i);
             fs::copy(&nn, &new_nn)?;
+            nn_sizes.push(self.nn_shapes.get(nn_id).unwrap().clone());
         }
 
-        // Take the remaining 5 nn's and create 5 new nn's by the following:
+        let weights: HashMap<u64, f32> = scores_to_keep.iter().map(|(k, v)| (**k, **v)).collect();
+
+        debug!("scores: {:?}", scores_to_keep);
+
+        let mut tasks = Vec::new();
+
+        // Take the remaining nn's and create new nn's by the following:
         for i in 0..survivor_count {
-            let nn_id = to_keep[i];
-            let nn = self
+            let self_clone = self.clone();
+
+            // randomly select individual id's sorted scores proportional to their score
+            let nn_id = weighted_random_selection(&weights);
+            let nn = self_clone
                 .folder
-                .join(format!("{}", self.generation))
-                .join(format!("{:06}_fighter_nn_{}.net", self.id, nn_id));
-            let fann = Fann::from_file(&nn).with_context(|| "Failed to load nn")?;
+                .join(format!("{}", self_clone.generation))
+                .join(self_clone.get_individual_id(nn_id))
+                .with_extension("net");
 
             // Load another nn from the current generation and cross breed it with the current nn
-            let cross_nn = self
-                .folder
-                .join(format!("{}", self.generation))
-                .join(format!(
-                    "{:06}_fighter_nn_{}.net",
-                    self.id,
-                    to_keep[thread_rng().gen_range(0..survivor_count)]
-                ));
-            let cross_fann =
-                Fann::from_file(&cross_nn).with_context(|| "Failed to load cross nn")?;
-
-            let mut new_fann = crossbreed(self, &fann, &cross_fann, self.crossbreed_segments)?;
-
-            // For each weight in the 5 new nn's there is a 20% chance of a minor mutation (a random number between -0.1 and 0.1 is added to the weight)
-            // And a 5% chance of a major mutation a new neuron is randomly added to a hidden layer
-            let mut connections = new_fann.get_connections(); // Vector of connections
-            for c in &mut connections {
-                if thread_rng().gen_range(0.0..1.0) < self.minor_mutation_rate {
-                    trace!("Minor mutation on connection {:?}", c);
-                    c.weight += thread_rng().gen_range(self.weight_initialization_range.clone());
-                    trace!("New weight: {}", c.weight);
+            let cross_id = loop {
+                let cross_id = weighted_random_selection(&weights);
+                if cross_id != nn_id {
+                    break cross_id;
                 }
-            }
+            };
 
-            new_fann.set_connections(&connections);
+            let cross_nn = self_clone
+                .folder
+                .join(format!("{}", self_clone.generation))
+                .join(self_clone.get_individual_id(cross_id))
+                .with_extension("net");
 
-            if thread_rng().gen_range(0.0..1.0) < self.major_mutation_rate {
-                new_fann = major_mutation(&new_fann, self.weight_initialization_range.clone())?;
-            }
+            let new_gen_folder = new_gen_folder.clone();
 
-            // Save the new nn's to the new generation folder
-            let new_nn = new_gen_folder.join(format!(
-                "{:06}_fighter_nn_{}.net",
-                self.id,
-                i + survivor_count
-            ));
-            new_fann
-                .save(&new_nn)
-                .with_context(|| "Failed to save nn")?;
+            let future = tokio::task::spawn_blocking(move || -> Result<Vec<u32>, Error> {
+                let fann = Fann::from_file(&nn).with_context(|| "Failed to load nn")?;
+                let cross_fann =
+                    Fann::from_file(&cross_nn).with_context(|| "Failed to load cross nn")?;
+
+                let mut new_fann = crossbreed(
+                    &self_clone,
+                    &fann,
+                    &cross_fann,
+                    self_clone.crossbreed_segments,
+                )?;
+
+                // For each weight in the 5 new nn's there is a 20% chance of a minor mutation (a random number between -0.1 and 0.1 is added to the weight)
+                // And a 5% chance of a major mutation a new neuron is randomly added to a hidden layer
+                let mut connections = new_fann.get_connections(); // Vector of connections
+                for c in &mut connections {
+                    if thread_rng().gen_range(0.0..1.0) < self_clone.minor_mutation_rate {
+                        trace!("Minor mutation on connection {:?}", c);
+                        c.weight +=
+                            thread_rng().gen_range(self_clone.weight_initialization_range.clone());
+                        trace!("New weight: {}", c.weight);
+                    }
+                }
+
+                new_fann.set_connections(&connections);
+
+                if thread_rng().gen_range(0.0..1.0) < self_clone.major_mutation_rate {
+                    new_fann =
+                        major_mutation(&new_fann, self_clone.weight_initialization_range.clone())?;
+                }
+
+                let new_nn = new_gen_folder
+                    .join(self_clone.get_individual_id((i + survivor_count) as u64))
+                    .with_extension("net");
+                new_fann
+                    .save(&new_nn)
+                    .with_context(|| "Failed to save nn")?;
+
+                Ok::<Vec<u32>, Error>(new_fann.get_layer_sizes())
+            });
+
+            tasks.push(future);
+        }
+
+        let results = join_all(tasks).await;
+
+        for result in results.into_iter() {
+            let new_size = result.with_context(|| "Failed to create new nn")??;
+            nn_sizes.push(new_size);
         }
 
         self.generation += 1;
@@ -351,7 +391,7 @@ impl GeneticNode for FighterNN {
         let get_highest_scores = |fighter: &FighterNN| -> Vec<(u64, f32)> {
             let mut sorted_scores: Vec<_> =
                 fighter.scores[fighter.generation as usize].iter().collect();
-            sorted_scores.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
+            sorted_scores.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap());
             sorted_scores
                 .iter()
                 .take(fighter.population_size / 2)
@@ -367,18 +407,25 @@ impl GeneticNode for FighterNN {
 
         let mut simulations = Vec::new();
 
-        for _ in 0..max(left.population_size, right.population_size) * SIMULATION_ROUNDS {
-            let left_nn_id = left_scores[thread_rng().gen_range(0..left_scores.len())].0;
-            let right_nn_id = right_scores[thread_rng().gen_range(0..right_scores.len())].0;
+        let left_weights: HashMap<u64, f32> = left_scores.iter().map(|(k, v)| (*k, *v)).collect();
+        let right_weights: HashMap<u64, f32> = right_scores.iter().map(|(k, v)| (*k, *v)).collect();
+
+        let num_simulations = max(left.population_size, right.population_size) * SIMULATION_ROUNDS;
+
+        for _ in 0..num_simulations {
+            let left_nn_id = weighted_random_selection(&left_weights);
+            let right_nn_id = weighted_random_selection(&right_weights);
 
             let left_nn_path = left
                 .folder
                 .join(left.generation.to_string())
-                .join(left.get_individual_id(left_nn_id));
+                .join(left.get_individual_id(left_nn_id))
+                .with_extension("net");
             let right_nn_path = right
                 .folder
                 .join(right.generation.to_string())
-                .join(right.get_individual_id(right_nn_id));
+                .join(right.get_individual_id(right_nn_id))
+                .with_extension("net");
             let semaphore_clone = gemla_context.shared_semaphore.clone();
             let display_simulation_semaphore = gemla_context.visible_simulations.clone();
 
@@ -414,8 +461,8 @@ impl GeneticNode for FighterNN {
             join_all(simulations).await.into_iter().collect();
         let scores = results?;
 
-        let total_left_score = scores.iter().map(|(l, _)| l).sum::<f32>();
-        let total_right_score = scores.iter().map(|(_, r)| r).sum::<f32>();
+        let total_left_score = scores.iter().map(|(l, _)| l).sum::<f32>() / num_simulations as f32;
+        let total_right_score = scores.iter().map(|(_, r)| r).sum::<f32>() / num_simulations as f32;
 
         debug!("Total left score: {}", total_left_score);
         debug!("Total right score: {}", total_right_score);
@@ -545,6 +592,33 @@ impl FighterNN {
     }
 }
 
+fn weighted_random_selection<T: Clone + std::hash::Hash + Eq>(weights: &HashMap<T, f32>) -> T {
+    let mut rng = thread_rng();
+
+    // Identify the minimum weight
+    let min_weight = weights.values().fold(f32::INFINITY, |a, &b| a.min(b));
+
+    // Adjust all weights to be non-negative
+    let offset = if min_weight < 0.0 {
+        (-min_weight) + 0.5
+    } else {
+        0.0
+    };
+    let total_weight: f32 = weights.values().map(|w| w + offset).sum();
+
+    let mut cumulative_weight = 0.0;
+    let random_weight = rng.gen::<f32>() * total_weight;
+
+    for (item, weight) in weights.iter() {
+        cumulative_weight += *weight + offset;
+        if cumulative_weight >= random_weight {
+            return item.clone();
+        }
+    }
+
+    panic!("Weighted random selection failed.");
+}
+
 async fn run_1v1_simulation(
     nn_path_1: &Path,
     nn_path_2: &Path,
@@ -602,7 +676,13 @@ async fn run_1v1_simulation(
     let config2_arg = format!("-NN2Config=\"{}\"", nn_path_2.to_str().unwrap());
     let disable_unreal_rendering_arg = "-nullrhi".to_string();
 
-    // debug!("the following command {} {} {} {}", GAME_EXECUTABLE_PATH, config1_arg, config2_arg, disable_unreal_rendering_arg);
+    trace!(
+        "Executing the following command {} {} {} {}",
+        GAME_EXECUTABLE_PATH,
+        config1_arg,
+        config2_arg,
+        disable_unreal_rendering_arg
+    );
 
     trace!("Running simulation for {} vs {}", nn_1_id, nn_2_id);
 
@@ -694,5 +774,58 @@ async fn read_score_from_file(file_path: &Path, nn_id: &str) -> Result<f32, io::
             }
             Err(e) => return Err(e),
         }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn test_weighted_random_selection() {
+        let weights = vec![
+            (43, -4.0403514),
+            (26, -2.9386168),
+            (44, -2.8106647),
+            (46, -1.3942022),
+            (23, 0.99386656),
+            (41, -2.2198126),
+            (48, 1.2195103),
+            (42, -3.4927247),
+            (7, -1.092067),
+            (0, -0.3878999),
+            (49, -4.156101),
+            (34, -0.33209237),
+            (30, -2.7059758),
+            (2, -2.251783),
+            (20, -0.5811202),
+            (10, -3.047954),
+            (6, -4.3464293),
+            (39, -3.7280478),
+            (1, -3.4291298),
+            (11, -2.0568254),
+            (24, -1.5701149),
+            (8, -1.5029285),
+            (3, -2.4728038),
+            (4, 3.7312133),
+            (25, -1.227466),
+        ]
+        .into_iter()
+        .collect();
+
+        let mut ids = vec![
+            43, 26, 44, 46, 23, 41, 48, 42, 7, 0, 49, 34, 30, 2, 20, 10, 6, 39, 1, 11, 24, 8, 3, 4,
+            25,
+        ];
+
+        for _ in 0..10000 {
+            let id = weighted_random_selection(&weights);
+
+            ids = ids.into_iter().filter(|&x| x != id).collect();
+
+            assert!(weights.contains_key(&id));
+        }
+
+        assert_eq!(ids.len(), 0);
     }
 }
