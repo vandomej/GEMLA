@@ -28,7 +28,6 @@ pub enum GeneticState {
 #[derive(Clone, Debug)]
 pub struct GeneticNodeContext<S> {
     pub generation: u64,
-    pub max_generations: u64,
     pub id: Uuid,
     pub gemla_context: S,
 }
@@ -46,7 +45,8 @@ pub trait GeneticNode: Send {
     /// TODO
     async fn initialize(context: GeneticNodeContext<Self::Context>) -> Result<Box<Self>, Error>;
 
-    async fn simulate(&mut self, context: GeneticNodeContext<Self::Context>) -> Result<(), Error>;
+    async fn simulate(&mut self, context: GeneticNodeContext<Self::Context>)
+        -> Result<bool, Error>;
 
     /// Mutates members in a population and/or crossbreeds them to produce new offspring.
     ///
@@ -72,7 +72,6 @@ where
     node: Option<T>,
     state: GeneticState,
     generation: u64,
-    max_generations: u64,
     id: Uuid,
 }
 
@@ -85,7 +84,6 @@ where
             node: None,
             state: GeneticState::Initialize,
             generation: 1,
-            max_generations: 1,
             id: Uuid::new_v4(),
         }
     }
@@ -96,19 +94,17 @@ where
     T: GeneticNode + Debug + Send + Clone,
     T::Context: Send + Sync + Clone + Debug + Serialize + DeserializeOwned + 'static + Default,
 {
-    pub fn new(max_generations: u64) -> Self {
+    pub fn new() -> Self {
         GeneticNodeWrapper::<T> {
-            max_generations,
             ..Default::default()
         }
     }
 
-    pub fn from(data: T, max_generations: u64, id: Uuid) -> Self {
+    pub fn from(data: T, id: Uuid) -> Self {
         GeneticNodeWrapper {
             node: Some(data),
             state: GeneticState::Simulate,
             generation: 1,
-            max_generations,
             id,
         }
     }
@@ -125,10 +121,6 @@ where
         self.id
     }
 
-    pub fn max_generations(&self) -> u64 {
-        self.max_generations
-    }
-
     pub fn generation(&self) -> u64 {
         self.generation
     }
@@ -140,7 +132,6 @@ where
     pub async fn process_node(&mut self, gemla_context: T::Context) -> Result<GeneticState, Error> {
         let context = GeneticNodeContext {
             generation: self.generation,
-            max_generations: self.max_generations,
             id: self.id,
             gemla_context,
         };
@@ -151,14 +142,15 @@ where
                 self.state = GeneticState::Simulate;
             }
             (GeneticState::Simulate, Some(n)) => {
-                n.simulate(context.clone())
+                let next_generation = n
+                    .simulate(context.clone())
                     .await
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
 
-                self.state = if self.generation >= self.max_generations {
-                    GeneticState::Finish
-                } else {
+                self.state = if next_generation {
                     GeneticState::Mutate
+                } else {
+                    GeneticState::Finish
                 };
             }
             (GeneticState::Mutate, Some(n)) => {
@@ -187,6 +179,7 @@ mod tests {
     #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
         pub score: f64,
+        pub max_generations: u64,
     }
 
     #[async_trait]
@@ -195,10 +188,14 @@ mod tests {
 
         async fn simulate(
             &mut self,
-            _context: GeneticNodeContext<Self::Context>,
-        ) -> Result<(), Error> {
+            context: GeneticNodeContext<Self::Context>,
+        ) -> Result<bool, Error> {
             self.score += 1.0;
-            Ok(())
+            if context.generation >= self.max_generations {
+                Ok(false)
+            } else {
+                Ok(true)
+            }
         }
 
         async fn mutate(
@@ -211,7 +208,10 @@ mod tests {
         async fn initialize(
             _context: GeneticNodeContext<Self::Context>,
         ) -> Result<Box<TestState>, Error> {
-            Ok(Box::new(TestState { score: 0.0 }))
+            Ok(Box::new(TestState {
+                score: 0.0,
+                max_generations: 2,
+            }))
         }
 
         async fn merge(
@@ -226,13 +226,12 @@ mod tests {
 
     #[test]
     fn test_new() -> Result<(), Error> {
-        let genetic_node = GeneticNodeWrapper::<TestState>::new(10);
+        let genetic_node = GeneticNodeWrapper::<TestState>::new();
 
         let other_genetic_node = GeneticNodeWrapper::<TestState> {
             node: None,
             state: GeneticState::Initialize,
             generation: 1,
-            max_generations: 10,
             id: genetic_node.id(),
         };
 
@@ -243,15 +242,17 @@ mod tests {
 
     #[test]
     fn test_from() -> Result<(), Error> {
-        let val = TestState { score: 0.0 };
+        let val = TestState {
+            score: 0.0,
+            max_generations: 10,
+        };
         let uuid = Uuid::new_v4();
-        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), uuid);
 
         let other_genetic_node = GeneticNodeWrapper::<TestState> {
             node: Some(val),
             state: GeneticState::Simulate,
             generation: 1,
-            max_generations: 10,
             id: genetic_node.id(),
         };
 
@@ -262,9 +263,12 @@ mod tests {
 
     #[test]
     fn test_as_ref() -> Result<(), Error> {
-        let val = TestState { score: 3.0 };
+        let val = TestState {
+            score: 3.0,
+            max_generations: 10,
+        };
         let uuid = Uuid::new_v4();
-        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), uuid);
 
         let ref_value = genetic_node.as_ref().unwrap();
 
@@ -275,9 +279,12 @@ mod tests {
 
     #[test]
     fn test_id() -> Result<(), Error> {
-        let val = TestState { score: 3.0 };
+        let val = TestState {
+            score: 3.0,
+            max_generations: 10,
+        };
         let uuid = Uuid::new_v4();
-        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), uuid);
 
         let id_value = genetic_node.id();
 
@@ -287,23 +294,13 @@ mod tests {
     }
 
     #[test]
-    fn test_max_generations() -> Result<(), Error> {
-        let val = TestState { score: 3.0 };
-        let uuid = Uuid::new_v4();
-        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
-
-        let max_generations = genetic_node.max_generations();
-
-        assert_eq!(max_generations, 10);
-
-        Ok(())
-    }
-
-    #[test]
     fn test_state() -> Result<(), Error> {
-        let val = TestState { score: 3.0 };
+        let val = TestState {
+            score: 3.0,
+            max_generations: 10,
+        };
         let uuid = Uuid::new_v4();
-        let genetic_node = GeneticNodeWrapper::from(val.clone(), 10, uuid);
+        let genetic_node = GeneticNodeWrapper::from(val.clone(), uuid);
 
         let state = genetic_node.state();
 
@@ -314,7 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_node() -> Result<(), Error> {
-        let mut genetic_node = GeneticNodeWrapper::<TestState>::new(2);
+        let mut genetic_node = GeneticNodeWrapper::<TestState>::new();
 
         assert_eq!(genetic_node.state(), GeneticState::Initialize);
         assert_eq!(genetic_node.process_node(()).await?, GeneticState::Simulate);

@@ -13,6 +13,7 @@ const POPULATION_REDUCTION_SIZE: u64 = 3;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TestState {
     pub population: Vec<i64>,
+    pub max_generations: u64,
 }
 
 #[async_trait]
@@ -26,10 +27,16 @@ impl GeneticNode for TestState {
             population.push(thread_rng().gen_range(0..100))
         }
 
-        Ok(Box::new(TestState { population }))
+        Ok(Box::new(TestState {
+            population,
+            max_generations: 10,
+        }))
     }
 
-    async fn simulate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
+    async fn simulate(
+        &mut self,
+        context: GeneticNodeContext<Self::Context>,
+    ) -> Result<bool, Error> {
         let mut rng = thread_rng();
 
         self.population = self
@@ -38,7 +45,11 @@ impl GeneticNode for TestState {
             .map(|p| p.saturating_add(rng.gen_range(-1..2)))
             .collect();
 
-        Ok(())
+        if context.generation >= self.max_generations {
+            Ok(false)
+        } else {
+            Ok(true)
+        }
     }
 
     async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
@@ -93,13 +104,15 @@ impl GeneticNode for TestState {
 
         v = v[..(POPULATION_REDUCTION_SIZE as usize)].to_vec();
 
-        let mut result = TestState { population: v };
+        let mut result = TestState {
+            population: v,
+            max_generations: 10,
+        };
 
         result
             .mutate(GeneticNodeContext {
                 id: *id,
                 generation: 0,
-                max_generations: 0,
                 gemla_context,
             })
             .await?;
@@ -118,7 +131,6 @@ mod tests {
         let state = TestState::initialize(GeneticNodeContext {
             id: Uuid::new_v4(),
             generation: 0,
-            max_generations: 0,
             gemla_context: (),
         })
         .await
@@ -131,6 +143,7 @@ mod tests {
     async fn test_simulate() {
         let mut state = TestState {
             population: vec![1, 1, 2, 3],
+            max_generations: 1,
         };
 
         let original_population = state.population.clone();
@@ -139,7 +152,6 @@ mod tests {
             .simulate(GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
-                max_generations: 0,
                 gemla_context: (),
             })
             .await
@@ -153,7 +165,6 @@ mod tests {
             .simulate(GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
-                max_generations: 0,
                 gemla_context: (),
             })
             .await
@@ -162,7 +173,6 @@ mod tests {
             .simulate(GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
-                max_generations: 0,
                 gemla_context: (),
             })
             .await
@@ -177,13 +187,13 @@ mod tests {
     async fn test_mutate() {
         let mut state = TestState {
             population: vec![4, 3, 3],
+            max_generations: 1,
         };
 
         state
             .mutate(GeneticNodeContext {
                 id: Uuid::new_v4(),
                 generation: 0,
-                max_generations: 0,
                 gemla_context: (),
             })
             .await
@@ -196,10 +206,12 @@ mod tests {
     async fn test_merge() {
         let state1 = TestState {
             population: vec![1, 2, 4, 5],
+            max_generations: 1,
         };
 
         let state2 = TestState {
             population: vec![0, 1, 3, 7],
+            max_generations: 1,
         };
 
         let merged_state = TestState::merge(&state1, &state2, &Uuid::new_v4(), ())

@@ -47,10 +47,7 @@ fn main() -> Result<()> {
             let mut gemla = log_error(
                 Gemla::<FighterNN>::new(
                     &PathBuf::from(args.file),
-                    GemlaConfig {
-                        generations_per_height: 5,
-                        overwrite: false,
-                    },
+                    GemlaConfig { overwrite: false },
                     DataFormat::Json,
                 )
                 .await,

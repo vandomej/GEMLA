@@ -57,7 +57,6 @@ type SimulationTree<T> = Box<Tree<GeneticNodeWrapper<T>>>;
 /// ```
 #[derive(Serialize, Deserialize, Copy, Clone)]
 pub struct GemlaConfig {
-    pub generations_per_height: u64,
     pub overwrite: bool,
 }
 
@@ -126,9 +125,9 @@ where
             // Before we can process nodes we must create blank nodes in their place to keep track of which nodes have been processed
             // in the tree and which nodes have not.
             self.data
-                .mutate(|(d, c, _)| {
+                .mutate(|(d, _, _)| {
                     let mut tree: Option<SimulationTree<T>> =
-                        Gemla::increase_height(d.take(), c, steps);
+                        Gemla::increase_height(d.take(), steps);
                     mem::swap(d, &mut tree);
                 })
                 .await?;
@@ -268,11 +267,7 @@ where
                             gemla_context.clone(),
                         )
                         .await?;
-                        tree.val = GeneticNodeWrapper::from(
-                            *merged_node,
-                            tree.val.max_generations(),
-                            tree.val.id(),
-                        );
+                        tree.val = GeneticNodeWrapper::from(*merged_node, tree.val.id());
                     }
                 }
                 (Some(l), Some(r)) => {
@@ -284,11 +279,7 @@ where
                     trace!("Copying node {}", l.val.id());
 
                     if let Some(left_node) = l.val.as_ref() {
-                        GeneticNodeWrapper::from(
-                            left_node.clone(),
-                            tree.val.max_generations(),
-                            tree.val.id(),
-                        );
+                        GeneticNodeWrapper::from(left_node.clone(), tree.val.id());
                     }
                 }
                 (Some(l), None) => Gemla::merge_completed_nodes(l, gemla_context.clone()).await?,
@@ -296,11 +287,7 @@ where
                     trace!("Copying node {}", r.val.id());
 
                     if let Some(right_node) = r.val.as_ref() {
-                        tree.val = GeneticNodeWrapper::from(
-                            right_node.clone(),
-                            tree.val.max_generations(),
-                            tree.val.id(),
-                        );
+                        tree.val = GeneticNodeWrapper::from(right_node.clone(), tree.val.id());
                     }
                 }
                 (None, Some(r)) => Gemla::merge_completed_nodes(r, gemla_context.clone()).await?,
@@ -353,11 +340,7 @@ where
         }
     }
 
-    fn increase_height(
-        tree: Option<SimulationTree<T>>,
-        config: &GemlaConfig,
-        amount: u64,
-    ) -> Option<SimulationTree<T>> {
+    fn increase_height(tree: Option<SimulationTree<T>>, amount: u64) -> Option<SimulationTree<T>> {
         if amount == 0 {
             tree
         } else {
@@ -365,13 +348,11 @@ where
                 tree.as_ref().map(|t| t.height() as u64).unwrap_or(0) + amount - 1;
 
             Some(Box::new(Tree::new(
-                GeneticNodeWrapper::new(config.generations_per_height),
-                Gemla::increase_height(tree, config, amount - 1),
+                GeneticNodeWrapper::new(),
+                Gemla::increase_height(tree, amount - 1),
                 // The right branch height has to equal the left branches total height
                 if left_branch_height > 0 {
-                    Some(Box::new(btree!(GeneticNodeWrapper::new(
-                        left_branch_height * config.generations_per_height
-                    ))))
+                    Some(Box::new(btree!(GeneticNodeWrapper::new())))
                 } else {
                     None
                 },
@@ -446,6 +427,7 @@ mod tests {
     #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
     struct TestState {
         pub score: f64,
+        pub max_generations: u64,
     }
 
     #[async_trait]
@@ -454,10 +436,10 @@ mod tests {
 
         async fn simulate(
             &mut self,
-            _context: GeneticNodeContext<Self::Context>,
-        ) -> Result<(), Error> {
+            context: GeneticNodeContext<Self::Context>,
+        ) -> Result<bool, Error> {
             self.score += 1.0;
-            Ok(())
+            Ok(context.generation < self.max_generations)
         }
 
         async fn mutate(
@@ -470,7 +452,10 @@ mod tests {
         async fn initialize(
             _context: GeneticNodeContext<Self::Context>,
         ) -> Result<Box<TestState>, Error> {
-            Ok(Box::new(TestState { score: 0.0 }))
+            Ok(Box::new(TestState {
+                score: 0.0,
+                max_generations: 10,
+            }))
         }
 
         async fn merge(
@@ -498,10 +483,7 @@ mod tests {
                     assert!(!path.exists());
 
                     // Testing initial creation
-                    let mut config = GemlaConfig {
-                        generations_per_height: 1,
-                        overwrite: true,
-                    };
+                    let mut config = GemlaConfig { overwrite: true };
                     let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json).await?;
 
                     // Now we can use `.await` within the spawned blocking task.
@@ -559,10 +541,7 @@ mod tests {
             CleanUp::new(&path).run(move |p| {
                 rt.block_on(async {
                     // Testing initial creation
-                    let config = GemlaConfig {
-                        generations_per_height: 10,
-                        overwrite: true,
-                    };
+                    let config = GemlaConfig { overwrite: true };
                     let mut gemla = Gemla::<TestState>::new(&p, config, DataFormat::Json).await?;
 
                     // Now we can use `.await` within the spawned blocking task.
