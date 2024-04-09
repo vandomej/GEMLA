@@ -40,6 +40,8 @@ const NEURAL_NETWORK_INITIAL_WEIGHT_MIN: f32 = -2.0;
 const NEURAL_NETWORK_INITIAL_WEIGHT_MAX: f32 = 2.0;
 const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MIN: usize = 2;
 const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX: usize = 20;
+const OFFSHOOT_GENERATIONAL_LENIENCE: u64 = 5;
+const MAINLINE_GENERATIONAL_LENIENCE: u64 = 20;
 
 const SIMULATION_ROUNDS: usize = 5;
 const SURVIVAL_RATE: f32 = 0.5;
@@ -74,6 +76,7 @@ pub struct FighterNN {
     // Shows how individuals are mapped from one generation to the next
     pub id_mapping: Vec<HashMap<u64, u64>>,
     pub lerp_amount: f32,
+    pub generational_lenience: u64,
 }
 
 #[async_trait]
@@ -158,6 +161,7 @@ impl GeneticNode for FighterNN {
             mutation_weight_range: -mutation_weight_amplitude..mutation_weight_amplitude,
             id_mapping: vec![HashMap::new()],
             lerp_amount: 0.0,
+            generational_lenience: OFFSHOOT_GENERATIONAL_LENIENCE,
         }))
     }
 
@@ -186,6 +190,18 @@ impl GeneticNode for FighterNN {
             };
 
             let secondary_id = loop {
+                if allotted_simulations.is_empty() {
+                    // Select a random id
+                    let random_id = loop {
+                        let id = thread_rng().gen_range(0..self.population_size);
+                        if id != primary_id {
+                            break id;
+                        }
+                    };
+
+                    break random_id;
+                }
+
                 let id = thread_rng().gen_range(0..allotted_simulations.len());
                 let (i, _) = allotted_simulations[id];
 
@@ -294,7 +310,7 @@ impl GeneticNode for FighterNN {
 
         self.scores.push(scores);
 
-        Ok(should_continue(&self.scores)?)
+        Ok(should_continue(&self.scores, self.generational_lenience)?)
     }
 
     async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
@@ -644,6 +660,7 @@ impl GeneticNode for FighterNN {
             mutation_weight_range,
             id_mapping: vec![HashMap::new()],
             lerp_amount,
+            generational_lenience: MAINLINE_GENERATIONAL_LENIENCE,
         }))
     }
 }
@@ -654,8 +671,8 @@ impl FighterNN {
     }
 }
 
-fn should_continue(scores: &[HashMap<u64, f32>]) -> Result<bool, Error> {
-    if scores.len() < 5 {
+fn should_continue(scores: &[HashMap<u64, f32>], lenience: u64) -> Result<bool, Error> {
+    if scores.len() < lenience as usize {
         return Ok(true);
     }
 
@@ -691,8 +708,8 @@ fn should_continue(scores: &[HashMap<u64, f32>]) -> Result<bool, Error> {
     }
 
     let highest_generation_index = scores.len() - 1;
-    let result = highest_generation_index - generation_with_highest_q3 < 5
-        && highest_generation_index - generation_with_highest_median < 5;
+    let result = highest_generation_index - generation_with_highest_q3 < lenience as usize
+        && highest_generation_index - generation_with_highest_median < lenience as usize;
 
     debug!(
         "Highest Q3 value: {} at generation {}, Highest Median value: {} at generation {}, Continuing? {}",
@@ -1534,57 +1551,57 @@ pub mod test {
             .collect();
 
         assert!(
-            should_continue(scores[..0].as_ref())
+            should_continue(scores[..0].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..1].as_ref())
+            should_continue(scores[..1].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..2].as_ref())
+            should_continue(scores[..2].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..3].as_ref())
+            should_continue(scores[..3].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..4].as_ref())
+            should_continue(scores[..4].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..5].as_ref())
+            should_continue(scores[..5].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..6].as_ref())
+            should_continue(scores[..6].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..7].as_ref())
+            should_continue(scores[..7].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == true
         );
         assert!(
-            should_continue(scores[..8].as_ref())
+            should_continue(scores[..8].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == false
         );
         assert!(
-            should_continue(scores[..9].as_ref())
+            should_continue(scores[..9].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == false
         );
         assert!(
-            should_continue(scores[..10].as_ref())
+            should_continue(scores[..10].as_ref(), 5)
                 .expect("Failed to determine if the simulation should continue")
                 == false
         );

@@ -129,6 +129,7 @@ for node in right_nodes:
             for i in range(len(node_scores)):
                 for (individual, score) in node_scores[i].items():
                     translated_node_scores.append((node["val"]["id"], i, score))
+            scores.append(translated_node_scores)
 
 # Organize scores by individual and then by generation
 individual_generation_scores = defaultdict(lambda: defaultdict(list))
