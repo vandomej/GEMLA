@@ -109,9 +109,9 @@ pub fn consolidate_old_connections(
 
     let primary_shape = primary.get_layer_sizes();
     let secondary_shape = secondary.get_layer_sizes();
-    debug!("Primary shape: {:?}", primary_shape);
-    debug!("Secondary shape: {:?}", secondary_shape);
-    debug!("New shape: {:?}", new_shape);
+    trace!("Primary shape: {:?}", primary_shape);
+    trace!("Secondary shape: {:?}", secondary_shape);
+    trace!("New shape: {:?}", new_shape);
 
     // Start by iterating layer by later
     let primary_connections = primary.get_connections();

@@ -22,29 +22,39 @@ use std::{
     ops::Range,
     path::{Path, PathBuf},
 };
-use tokio::{process::Command, sync::mpsc::channel};
+use tokio::process::Command;
 use uuid::Uuid;
 
 use self::neural_network_utility::{crossbreed, major_mutation};
 
 const BASE_DIR: &str = "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Simulations";
-const POPULATION: usize = 50;
+const POPULATION: usize = 200;
 
-const NEURAL_NETWORK_INPUTS: usize = 18;
+const NEURAL_NETWORK_INPUTS: usize = 22;
 const NEURAL_NETWORK_OUTPUTS: usize = 8;
+
 const NEURAL_NETWORK_HIDDEN_LAYERS_MIN: usize = 1;
-const NEURAL_NETWORK_HIDDEN_LAYERS_MAX: usize = 10;
+const NEURAL_NETWORK_HIDDEN_LAYERS_MAX: usize = 2;
+
 const NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN: usize = 3;
-const NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX: usize = 35;
-const NEURAL_NETWORK_INITIAL_WEIGHT_MIN: f32 = -2.0;
-const NEURAL_NETWORK_INITIAL_WEIGHT_MAX: f32 = 2.0;
+const NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX: usize = 50;
+
+const NEURAL_NETWORK_INITIAL_WEIGHT_MAX: f32 = 0.5;
+
+const NEURAL_NETWORK_MINOR_MUTATION_RATE_MAX: f32 = 0.3;
+const NEURAL_NETWORK_MUTATION_WEIGHT_MAX: f32 = 1.0;
+
+const NEURAL_NETWORK_MAJOR_MUTATION_RATE_MAX: f32 = 1.0;
+
 const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MIN: usize = 2;
-const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX: usize = 20;
-const OFFSHOOT_GENERATIONAL_LENIENCE: u64 = 5;
+const NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX: usize = 6;
+
+const OFFSHOOT_GENERATIONAL_LENIENCE: u64 = 10;
 const MAINLINE_GENERATIONAL_LENIENCE: u64 = 20;
 
 const SIMULATION_ROUNDS: usize = 5;
-const SURVIVAL_RATE: f32 = 0.5;
+const SURVIVAL_RATE_MIN: f32 = 0.1;
+const SURVIVAL_RATE_MAX: f32 = 0.9;
 const GAME_EXECUTABLE_PATH: &str =
     "F:\\\\vandomej\\Projects\\dootcamp-AI-Simulation\\Package\\Windows\\AI_Fight_Sim.exe";
 
@@ -77,6 +87,7 @@ pub struct FighterNN {
     pub id_mapping: Vec<HashMap<u64, u64>>,
     pub lerp_amount: f32,
     pub generational_lenience: u64,
+    pub survival_rate: f32,
 }
 
 #[async_trait]
@@ -102,9 +113,8 @@ impl GeneticNode for FighterNN {
         })?;
 
         let mut nn_shapes = HashMap::new();
-        let weight_initialization_range = thread_rng()
-            .gen_range(NEURAL_NETWORK_INITIAL_WEIGHT_MIN..0.0)
-            ..thread_rng().gen_range(0.0..=NEURAL_NETWORK_INITIAL_WEIGHT_MAX);
+        let weight_initialization_amplitude = thread_rng().gen_range(0.0..NEURAL_NETWORK_INITIAL_WEIGHT_MAX);
+        let weight_initialization_range = -weight_initialization_amplitude..weight_initialization_amplitude;
 
         // Create the first generation in this folder
         for i in 0..POPULATION {
@@ -115,11 +125,11 @@ impl GeneticNode for FighterNN {
 
             // Randomly generate a neural network shape based on constants
             let hidden_layers = thread_rng()
-                .gen_range(NEURAL_NETWORK_HIDDEN_LAYERS_MIN..NEURAL_NETWORK_HIDDEN_LAYERS_MAX);
+                .gen_range(NEURAL_NETWORK_HIDDEN_LAYERS_MIN..=NEURAL_NETWORK_HIDDEN_LAYERS_MAX);
             let mut nn_shape = vec![NEURAL_NETWORK_INPUTS as u32];
             for _ in 0..hidden_layers {
                 nn_shape.push(thread_rng().gen_range(
-                    NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN..NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX,
+                    NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MIN..=NEURAL_NETWORK_HIDDEN_LAYER_SIZE_MAX,
                 ) as u32);
             }
             nn_shape.push(NEURAL_NETWORK_OUTPUTS as u32);
@@ -138,30 +148,31 @@ impl GeneticNode for FighterNN {
         }
 
         let mut crossbreed_segments = thread_rng().gen_range(
-            NEURAL_NETWORK_CROSSBREED_SEGMENTS_MIN..NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX,
+            NEURAL_NETWORK_CROSSBREED_SEGMENTS_MIN..=NEURAL_NETWORK_CROSSBREED_SEGMENTS_MAX,
         );
         if crossbreed_segments % 2 == 0 {
             crossbreed_segments += 1;
         }
 
-        let mutation_weight_amplitude = thread_rng().gen_range(0.0..1.0);
+        let mutation_weight_amplitude = thread_rng().gen_range(0.0..NEURAL_NETWORK_MUTATION_WEIGHT_MAX);
 
         Ok(Box::new(FighterNN {
             id: context.id,
             folder,
             population_size: POPULATION,
             generation: 0,
-            scores: vec![HashMap::new()],
+            scores: vec![],
             nn_shapes: vec![nn_shapes],
             // we need crossbreed segments to be even
             crossbreed_segments,
             weight_initialization_range,
-            minor_mutation_rate: thread_rng().gen_range(0.0..1.0),
-            major_mutation_rate: thread_rng().gen_range(0.0..1.0),
+            minor_mutation_rate: thread_rng().gen_range(0.0..NEURAL_NETWORK_MINOR_MUTATION_RATE_MAX),
+            major_mutation_rate: thread_rng().gen_range(0.0..NEURAL_NETWORK_MAJOR_MUTATION_RATE_MAX),
             mutation_weight_range: -mutation_weight_amplitude..mutation_weight_amplitude,
-            id_mapping: vec![HashMap::new()],
+            id_mapping: vec![],
             lerp_amount: 0.0,
             generational_lenience: OFFSHOOT_GENERATIONAL_LENIENCE,
+            survival_rate: thread_rng().gen_range(SURVIVAL_RATE_MIN..SURVIVAL_RATE_MAX),
         }))
     }
 
@@ -189,12 +200,14 @@ impl GeneticNode for FighterNN {
                 i
             };
 
+
             let secondary_id = loop {
-                if allotted_simulations.is_empty() {
+                if allotted_simulations.is_empty() || allotted_simulations.len() == 1 {
                     // Select a random id
                     let random_id = loop {
                         let id = thread_rng().gen_range(0..self.population_size);
                         if id != primary_id {
+                            allotted_simulations.clear();
                             break id;
                         }
                     };
@@ -219,22 +232,21 @@ impl GeneticNode for FighterNN {
             matches.push((primary_id, secondary_id));
         }
 
+        debug!("Matches determined");
         trace!("Matches: {:?}", matches);
 
         // Create a channel to send the scores back to the main thread
-        let (tx, mut rx) = channel::<(usize, f32)>(self.population_size * SIMULATION_ROUNDS * 20);
         let mut tasks = Vec::new();
 
         for (primary_id, secondary_id) in matches.iter() {
-            let self_clone = self.clone();
-            let semaphore_clone = context.gemla_context.shared_semaphore.clone();
-            let display_simulation_semaphore = context.gemla_context.visible_simulations.clone();
-            let tx = tx.clone();
-
-            let task = async move {
+            let task = {
+                let self_clone = self.clone();
+                let semaphore_clone = context.gemla_context.shared_semaphore.clone();
+                let display_simulation_semaphore = context.gemla_context.visible_simulations.clone();
+            
                 let folder = self_clone.folder.clone();
                 let generation = self_clone.generation;
-
+        
                 let primary_nn = self_clone
                     .folder
                     .join(format!("{}", self_clone.generation))
@@ -244,77 +256,84 @@ impl GeneticNode for FighterNN {
                     .join(format!("{}", generation))
                     .join(self_clone.get_individual_id(*secondary_id as u64))
                     .with_extension("net");
-
-                let permit = semaphore_clone
-                    .acquire_owned()
-                    .await
-                    .with_context(|| "Failed to acquire semaphore permit")?;
-
-                let display_simulation = match display_simulation_semaphore.try_acquire_owned() {
-                    Ok(s) => Some(s),
-                    Err(_) => None,
-                };
-
-                let (primary_score, secondary_score) =
-                    if let Some(display_simulation) = display_simulation {
+        
+                // Introducing a new scope for acquiring permits and running simulations
+                let simulation_result = async move {
+                    let permit = semaphore_clone.acquire_owned().await
+                        .with_context(|| "Failed to acquire semaphore permit")?;
+        
+                    let display_simulation = match display_simulation_semaphore.try_acquire_owned() {
+                        Ok(s) => Some(s),
+                        Err(_) => None,
+                    };
+        
+                    let (primary_score, secondary_score) = if let Some(display_simulation) = display_simulation {
                         let result = run_1v1_simulation(&primary_nn, &secondary_nn, true).await?;
-                        drop(display_simulation);
+                        drop(display_simulation); // Explicitly dropping resources no longer needed
                         result
                     } else {
                         run_1v1_simulation(&primary_nn, &secondary_nn, false).await?
                     };
+        
+                    drop(permit); // Explicitly dropping resources no longer needed
 
-                drop(permit);
-
-                debug!(
-                    "{} vs {} -> {} vs {}",
-                    primary_id, secondary_id, primary_score, secondary_score
-                );
-
-                // Send score using a channel
-                tx.send((*primary_id, primary_score))
-                    .await
-                    .with_context(|| "Failed to send score")?;
-                tx.send((*secondary_id, secondary_score))
-                    .await
-                    .with_context(|| "Failed to send score")?;
-
-                Ok(())
+                    debug!(
+                        "{} vs {} -> {} vs {}",
+                        primary_id, secondary_id, primary_score, secondary_score
+                    );
+        
+                    Ok((*primary_id, primary_score, *secondary_id, secondary_score))
+                }; // Await the scoped async block immediately
+        
+                // The result of the simulation, whether Ok or Err, is returned here.
+                // This ensures tx is dropped when the block exits, regardless of success or failure.
+                simulation_result
             };
 
             tasks.push(task);
         }
 
-        let results: Vec<Result<(), Error>> = join_all(tasks).await;
+        debug!("Tasks created");
+
+        let results: Vec<Result<(usize, f32, usize, f32), Error>> = join_all(tasks).await;
+
+        debug!("Tasks completed");
 
         // resolve results for any errors
-        for result in results.into_iter() {
-            result.with_context(|| "Failed to run simulation")?;
-        }
-
-        // Receive the scores from the channel
         let mut scores = HashMap::new();
-        while let Some((id, score)) = rx.recv().await {
+        for result in results.into_iter() {
+            let (primary_id, primary_score, secondary_id, secondary_score) = result.with_context(|| "Failed to run simulation")?;
+
             // If score exists, add the new score to the existing score
-            if let Some(existing_score) = scores.get_mut(&(id as u64)) {
-                *existing_score += score;
+            if let Some((existing_score, count)) = scores.get_mut(&(primary_id as u64)) {
+                *existing_score += primary_score;
+                *count += 1;
             } else {
-                scores.insert(id as u64, score);
+                scores.insert(primary_id as u64, (primary_score, 1));
+            }
+
+            // If score exists, add the new score to the existing score
+            if let Some((existing_score, count)) = scores.get_mut(&(secondary_id as u64)) {
+                *existing_score += secondary_score;
+                *count += 1;
+            } else {
+                scores.insert(secondary_id as u64, (secondary_score, 1));
             }
         }
 
         // Average scores for each individual
-        for (_, score) in scores.iter_mut() {
-            *score /= SIMULATION_ROUNDS as f32;
+        let mut final_scores = HashMap::new();
+        for (i, (score, count)) in scores.iter() {
+            final_scores.insert(*i, *score / *count as f32);
         }
 
-        self.scores.push(scores);
+        self.scores.push(final_scores);
 
         Ok(should_continue(&self.scores, self.generational_lenience)?)
     }
 
     async fn mutate(&mut self, _context: GeneticNodeContext<Self::Context>) -> Result<(), Error> {
-        let survivor_count = (self.population_size as f32 * SURVIVAL_RATE) as usize;
+        let survivor_count = (self.population_size as f32 * self.survival_rate) as usize;
         let mut nn_sizes = Vec::new();
         let mut id_mapping = HashMap::new();
 
@@ -359,7 +378,7 @@ impl GeneticNode for FighterNN {
         let mut tasks = Vec::new();
 
         // Take the remaining nn's and create new nn's by the following:
-        for i in 0..survivor_count {
+        for i in 0..(self.population_size - survivor_count) {
             let self_clone = self.clone();
 
             // randomly select individual id's sorted scores proportional to their score
@@ -443,7 +462,6 @@ impl GeneticNode for FighterNN {
             .collect::<HashMap<_, _>>();
 
         self.generation += 1;
-        self.scores.push(HashMap::new());
         self.nn_shapes.push(nn_sizes_map);
         self.id_mapping.push(id_mapping);
 
@@ -523,6 +541,8 @@ impl GeneticNode for FighterNN {
                 } else {
                     run_1v1_simulation(&left_nn_path, &right_nn_path, false).await?
                 };
+
+                debug!("{} vs {} -> {} vs {}", left_nn_id, right_nn_id, left_score, right_score);
 
                 drop(permit);
 
@@ -646,21 +666,27 @@ impl GeneticNode for FighterNN {
 
         debug!("mutation_weight_range: {:?}", mutation_weight_range);
 
+        let survival_rate = left.survival_rate.lerp(right.survival_rate, lerp_amount);
+
+        debug!("survival_rate: {}", survival_rate);
+
         Ok(Box::new(FighterNN {
             id: *id,
             folder,
             generation: 0,
             population_size: nn_shapes.len(),
-            scores: vec![HashMap::new()],
+            scores: vec![],
             crossbreed_segments,
             nn_shapes: vec![nn_shapes],
             weight_initialization_range,
             minor_mutation_rate,
             major_mutation_rate,
             mutation_weight_range,
-            id_mapping: vec![HashMap::new()],
+            id_mapping: vec![],
             lerp_amount,
+            // generational_lenience: left.generational_lenience + MAINLINE_GENERATIONAL_LENIENCE,
             generational_lenience: MAINLINE_GENERATIONAL_LENIENCE,
+            survival_rate,
         }))
     }
 }
@@ -713,7 +739,7 @@ fn should_continue(scores: &[HashMap<u64, f32>], lenience: u64) -> Result<bool, 
 
     debug!(
         "Highest Q3 value: {} at generation {}, Highest Median value: {} at generation {}, Continuing? {}",
-        highest_q3_value, generation_with_highest_q3, highest_median, generation_with_highest_median, result
+        highest_q3_value, generation_with_highest_q3 + 1, highest_median, generation_with_highest_median + 1, result
     );
 
     Ok(result)
@@ -767,7 +793,7 @@ async fn run_1v1_simulation(
             .await
             .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        debug!(
+        trace!(
             "{} scored {}, while {} scored {}",
             nn_1_id, round_score, nn_2_id, opposing_score
         );
@@ -790,7 +816,7 @@ async fn run_1v1_simulation(
                 format!("Failed to read score from file: {:?}", opposite_score_file)
             })?;
 
-        debug!(
+        trace!(
             "{} scored {}, while {} scored {}",
             nn_1_id, round_score, nn_2_id, opposing_score
         );
@@ -847,7 +873,7 @@ async fn run_1v1_simulation(
             .await
             .with_context(|| format!("Failed to read score from file: {:?}", score_file))?;
 
-        debug!(
+        trace!(
             "{} scored {}, while {} scored {}",
             nn_1_id, round_score, nn_2_id, opposing_score
         );
@@ -885,21 +911,17 @@ async fn read_score_from_file(file_path: &Path, nn_id: &str) -> Result<f32, io::
                     "NN ID not found in scores file",
                 ));
             }
-            Err(e)
-                if e.kind() == io::ErrorKind::WouldBlock
-                    || e.kind() == io::ErrorKind::PermissionDenied
-                    || e.kind() == io::ErrorKind::Other =>
+            Err(_) =>
             {
-                if attempts >= 5 {
+                if attempts >= 2 {
                     // Attempt 5 times before giving up.
-                    return Err(e);
+                    return Ok(-100.0);
                 }
 
                 attempts += 1;
                 // wait 1 second to ensure the file is written
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
             }
-            Err(e) => return Err(e),
         }
     }
 }

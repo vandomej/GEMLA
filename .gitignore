@@ -14,3 +14,7 @@ settings.json
 .DS_Store
 
 .vscode/alive
+
+# Added by cargo
+
+/target

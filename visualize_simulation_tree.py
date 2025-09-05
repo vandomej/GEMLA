@@ -36,7 +36,7 @@ def hierarchy_pos(G, root=None, width=1., vert_gap=0.2, vert_loc=0, xcenter=0.5)
     return _hierarchy_pos(G, root, width, vert_gap, vert_loc, xcenter)
 
 # Simplified JSON data for demonstration
-with open('gemla/round2.json', 'r') as file:
+with open('gemla/round4.json', 'r') as file:
     simplified_json_data = json.load(file)
 
 # Function to traverse the tree and create a graph
@@ -68,7 +68,7 @@ def traverse(node, graph, parent=None):
         # print debug statement
         # print(f"Node {node_id}: Max score: {overall_max_score:.6f} (Individual {overall_max_score_individual} in Gen {overall_max_score_gen})")
         # print(f"Left: {node.get('left')}, Right: {node.get('right')}")
-        label = f"{node_id}\nGenerations: {generations}, Population: {population_size}\nMax score: {overall_max_score:.6f} (Individual {overall_max_score_individual} in Gen {overall_max_score_gen})"
+        label = f"{node_id}\nGenerations: {generations}, Population: {population_size}\nMax score: {overall_max_score:.6f} (Individual {overall_max_score_individual} in Gen {overall_max_score_gen + 1 if overall_max_score_gen is not None else 'N/A'})"
     else:
         label = node_id
 

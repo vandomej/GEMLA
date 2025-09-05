@@ -6,6 +6,7 @@ use crate::error::Error;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use log::info;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 use uuid::Uuid;
@@ -146,6 +147,8 @@ where
                     .simulate(context.clone())
                     .await
                     .with_context(|| format!("Error simulating node: {:?}", self))?;
+
+                info!("Simulation complete and continuing: {:?}", next_generation);
 
                 self.state = if next_generation {
                     GeneticState::Mutate

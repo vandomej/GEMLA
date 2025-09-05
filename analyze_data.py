@@ -5,10 +5,10 @@ from collections import defaultdict
 import numpy as np
 
 # Simplified JSON data for demonstration
-with open('gemla/round2.json', 'r') as file:
+with open('gemla/round4.json', 'r') as file:
     simplified_json_data = json.load(file)
 
-target_node_id = '0c1e64dc-6ddf-4dbb-bf6e-e8218b925194'
+target_node_id = '523f8250-3101-4586-90a1-127ffa6d73d9'
 
 # Function to traverse the tree to find a node id
 def traverse_left_nodes(node):
@@ -67,7 +67,7 @@ fig, ax = plt.subplots(figsize=(10, 6))
 boxplots = ax.boxplot(scores_values, vert=False, patch_artist=True, labels=[f'Set {i+1}' for i in range(len(scores_values))])
 
 # Set figure name to node id
-# fig.canvas.set_window_title('Main node line')
+ax.set_xscale('symlog', linthresh=1.0)
 
 # Labeling
 ax.set_xlabel(f'Scores - Main Line')
@@ -79,33 +79,35 @@ ax.set_yticklabels([f'Set {i+1}' for i in range(len(scores_values))])
 
 # Getting most recent right graph
 right_nodes = traverse_right_nodes(simplified_json_data[0])
-target_node_id = None
-target_node = None
-if target_node_id:
-    for node in right_nodes:
-        if node["val"]["id"] == target_node_id:
-            target_node = node
-            break
-else:
-    target_node = right_nodes[1]
-scores = target_node["val"]["node"]["scores"]
+if len(right_nodes) != 0:
+    target_node_id = None
+    target_node = None
+    if target_node_id:
+        for node in right_nodes:
+            if node["val"]["id"] == target_node_id:
+                target_node = node
+                break
+    else:
+        target_node = right_nodes[0]
+    scores = target_node["val"]["node"]["scores"]
 
-scores_values = [list(score_set.values()) for score_set in scores]
+    scores_values = [list(score_set.values()) for score_set in scores]
 
-# Set up the figure for plotting on the same graph
-fig, ax = plt.subplots(figsize=(10, 6))
+    # Set up the figure for plotting on the same graph
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-# Generate a boxplot for each set of scores on the same graph
-boxplots = ax.boxplot(scores_values, vert=False, patch_artist=True, labels=[f'Set {i+1}' for i in range(len(scores_values))])
+    # Generate a boxplot for each set of scores on the same graph
+    boxplots = ax.boxplot(scores_values, vert=False, patch_artist=True, labels=[f'Set {i+1}' for i in range(len(scores_values))])
 
+    ax.set_xscale('symlog', linthresh=1.0)
 
-# Labeling
-ax.set_xlabel(f'Scores: {target_node['val']['id']}')
-ax.set_ylabel('Score Sets')
-ax.yaxis.grid(True)  # Add horizontal grid lines for clarity
+    # Labeling
+    ax.set_xlabel(f'Scores: {target_node['val']['id']}')
+    ax.set_ylabel('Score Sets')
+    ax.yaxis.grid(True)  # Add horizontal grid lines for clarity
 
-# Set y-axis labels to be visible
-ax.set_yticklabels([f'Set {i+1}' for i in range(len(scores_values))])
+    # Set y-axis labels to be visible
+    ax.set_yticklabels([f'Set {i+1}' for i in range(len(scores_values))])
 
 # Find the highest scoring sets combining all scores and generations
 scores = []
@@ -121,15 +123,16 @@ for node in left_nodes:
             scores.append(translated_node_scores)
 
 # Add scores from the right nodes
-for node in right_nodes:
-    if node["val"]["node"]:
-        node_scores = node["val"]["node"]["scores"]
-        translated_node_scores = []
-        if node_scores:
-            for i in range(len(node_scores)):
-                for (individual, score) in node_scores[i].items():
-                    translated_node_scores.append((node["val"]["id"], i, score))
-            scores.append(translated_node_scores)
+if len(right_nodes) != 0:
+    for node in right_nodes:
+        if node["val"]["node"]:
+            node_scores = node["val"]["node"]["scores"]
+            translated_node_scores = []
+            if node_scores:
+                for i in range(len(node_scores)):
+                    for (individual, score) in node_scores[i].items():
+                        translated_node_scores.append((node["val"]["id"], i, score))
+                scores.append(translated_node_scores)
 
 # Organize scores by individual and then by generation
 individual_generation_scores = defaultdict(lambda: defaultdict(list))
@@ -155,9 +158,13 @@ labels = [f'{id[:8]}... Gen {gen}' for id, gen in top_20_individual_generations]
 # Generate box and whisker plots for the top 20 individual generations
 fig, ax = plt.subplots(figsize=(12, 10))
 ax.boxplot(top_20_scores, vert=False, patch_artist=True, labels=labels)
+
+ax.set_xscale('symlog', linthresh=1.0)
+
 ax.set_xlabel('Scores')
 ax.set_ylabel('Individual Generation')
 ax.set_title('Top 20 Individual Generations by Q3 Value')
+ax.yaxis.grid(True)  # Add horizontal grid lines for clarity
 
 # Display the plot
 plt.show()
